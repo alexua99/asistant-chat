@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GPT Bot</title>
+    <style>
+        body {
+            font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
+            margin: 0;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        
+        .card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #1f2937;
+            font-weight: 600;
+        }
+        
+        .chat {
+            height: 60vh;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .msg {
+            padding: 10px 12px;
+            border-radius: 10px;
+            max-width: 80%;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        
+        .user {
+            align-self: flex-end;
+            background: #1e3a8a;
+            color: #eaf2ff;
+        }
+        
+        .bot {
+            align-self: flex-start;
+            background: #0b3b2e;
+            color: #e2f7ed;
+        }
+        /* typing indicator */
+        
+        .typing {
+            align-self: flex-start;
+            background: #0b3b2e;
+            color: #e2f7ed;
+            padding: 10px 12px;
+            border-radius: 10px;
+            max-width: 80%;
+            display: inline-flex;
+            gap: 4px;
+        }
+        
+        .typing .dot {
+            width: 6px;
+            height: 6px;
+            background: #cde8dd;
+            border-radius: 50%;
+            opacity: 0.4;
+            animation: blink 1.2s infinite;
+        }
+        
+        .typing .dot:nth-child(2) {
+            animation-delay: .2s;
+        }
+        
+        .typing .dot:nth-child(3) {
+            animation-delay: .4s;
+        }
+        
+        @keyframes blink {
+            0%,
+            80%,
+            100% {
+                opacity: 0.2;
+                transform: translateY(0);
+            }
+            40% {
+                opacity: 1;
+                transform: translateY(-2px);
+            }
+        }
+        
+        .input-row {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            border-top: 1px solid #1f2937;
+        }
+        
+        input {
+            flex: 1;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0b1220;
+            color: #e2e8f0;
+        }
+        
+        button {
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #1f2937;
+            color: #e2e8f0;
+            cursor: pointer;
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">Simple Assistant</div>
+            <div id="chat" class="chat"></div>
+            <div class="input-row">
+                <input id="email" placeholder="Email (optional)" />
+                <input id="order" placeholder="Order Number (digits only)" inputmode="numeric" pattern="\d{5,}" title="Enter exact order number (digits only)" />
+                <input id="iccid" placeholder="ICCID (optional)" inputmode="numeric" pattern="\d{10,}" title="Enter ICCID (long number, 10+ digits)" />
+            </div>
+            <div class="input-row" style="padding-top: 0;">
+                <div style="font-size:12px;color:#94a3b8;">
+                    Enter the exact Order Number (digits only). ICCID is a long number (10+ digits).
+                </div>
+            </div>
+
+            <div class="input-row">
+                <input id="input" placeholder="Type your question and press Enter" />
+                <button id="send">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chat = document.getElementById('chat');
+        const input = document.getElementById('input');
+        const emailEl = document.getElementById('email');
+        const orderEl = document.getElementById('order');
+        const iccidEl = document.getElementById('iccid');
+
+        const sendBtn = document.getElementById('send');
+        const history = [];
+
+        function addMessage(text, role) {
+            const div = document.createElement('div');
+            div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        async function addMessageAnimated(text) {
+            const div = document.createElement('div');
+            div.className = 'msg bot';
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+
+            // Сохраняем переносы строк: разбиваем на токены (слова и пробельные последовательности)
+            const tokens = String(text).match(/[^\s]+|\s+/g) || [];
+            let current = '';
+            for (let i = 0; i < tokens.length; i++) {
+                const t = tokens[i];
+                current += t; // добавляем как есть, включая \n
+                div.textContent = current;
+                chat.scrollTop = chat.scrollHeight;
+                // задержку применяем только для «слов», а не для чистых пробелов/переносов
+                if (!/^\s+$/.test(t)) {
+                    const base = 30;
+                    const perChar = 12;
+                    const jitter = Math.random() * 60;
+                    const delayMs = Math.min(220, base + t.length * perChar + jitter);
+                    await delay(delayMs);
+                }
+            }
+        }
+
+        function showTyping() {
+            const div = document.createElement('div');
+            div.className = 'typing';
+            for (let i = 0; i < 3; i++) {
+                const d = document.createElement('span');
+                d.className = 'dot';
+                div.appendChild(d);
+            }
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+            return div;
+        }
+
+        function hideTyping(el) {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+
+        const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+        function splitSentences(text) {
+            if (!text) return [];
+            // Разбиваем по . ! ? … и переводам строк, сохраняя знак в конце
+            const parts = String(text)
+                .replace(/\s+/g, ' ')
+                .match(/[^.!?…\n]+[.!?…]?/g);
+            return (parts || []).map(s => s.trim()).filter(Boolean);
+        }
+
+        function detectLangSimple(text) {
+            if (/[А-Яа-яЁё]/.test(text || '')) return 'ru';
+            return 'en';
+        }
+
+        function addTempMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'msg bot';
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+            return div;
+        }
+
+        function removeElement(el) {
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+
+        async function renderReplyWithTyping(text) {
+            // Если ответ содержит переносы строк/списки — выводим одним сообщением
+            const isList = /\n/.test(text) || /^-\s/m.test(text);
+            if (isList) {
+                const typing = showTyping();
+                await delay(400 + Math.random() * 400);
+                hideTyping(typing);
+                await addMessageAnimated(text);
+                return;
+            }
+
+            const sentences = splitSentences(text);
+            if (sentences.length === 0) return;
+            let typing = showTyping();
+            for (let i = 0; i < sentences.length; i++) {
+                // имитация печати: пауза зависит от длины предложения
+                const len = sentences[i].length;
+                const base = 350; // базовая задержка
+                const perChar = 22; // миллисекунд на символ
+                const jitter = Math.random() * 250; // случайная составляющая
+                const maxPause = 1800; // верхний предел
+                const pause = Math.min(maxPause, base + len * perChar + jitter);
+                await delay(pause);
+                hideTyping(typing);
+                await addMessageAnimated(sentences[i]);
+                if (i < sentences.length - 1) typing = showTyping();
+            }
+        }
+
+        // Initial assistant prompt asking for order/email
+        addMessage('To get started, please enter your order number or the purchase email (fields above). Then type your question.', 'assistant');
+
+        async function send() {
+            const text = input.value.trim();
+            const emailVal = emailEl.value.trim();
+            const orderVal = orderEl.value.trim();
+            const iccidVal = iccidEl.value.trim();
+
+            // Разрешаем отправку без текста, если заполнены идентификаторы заказа
+            if (!text && !emailVal && !orderVal && !iccidVal) return;
+
+            const outgoingText = text || 'start';
+            input.value = '';
+            if (text) addMessage(text, 'user');
+            sendBtn.disabled = true;
+
+            try {
+                const res = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: outgoingText,
+                        history,
+                        email: emailVal || undefined,
+                        order: orderVal || undefined,
+                        iccid: iccidVal || undefined
+                    })
+                });
+                const data = await res.json();
+                if (data.reply) {
+                    // Показ предуведомления для больших ответов
+                    const sentences = splitSentences(data.reply);
+                    const isLong = (data.reply.length > 220) || (sentences.length > 2);
+                    let notice;
+                    if (isLong) {
+                        const lang = detectLangSimple(text) || 'ru';
+                        const msg = lang === 'ru' ? 'Минутку, обрабатываю…' : 'One moment, processing…';
+                        notice = addTempMessage(msg);
+                        await delay(600 + Math.random() * 600);
+                        removeElement(notice);
+                    }
+                    await renderReplyWithTyping(data.reply);
+                    if (data.followUp) {
+                        // небольшая пауза между сообщениями
+                        await delay(350 + Math.random() * 400);
+                        await renderReplyWithTyping(data.followUp);
+                    }
+                    history.push({
+                        role: 'user',
+                        content: text
+                    });
+                    history.push({
+                        role: 'assistant',
+                        content: data.reply + (data.followUp ? ('\n' + data.followUp) : '')
+                    });
+                } else {
+                    addMessage('Error: no reply', 'assistant');
+                }
+            } catch (e) {
+                addMessage('Network error', 'assistant');
+            } finally {
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        sendBtn.addEventListener('click', send);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') send();
+        });
+    </script>
+</body>
+
+</html>
