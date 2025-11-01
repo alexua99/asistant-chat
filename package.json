@@ -5,7 +5,14 @@
     "main": "server.js",
     "type": "module",
     "scripts": {
-        "start": "node server.js"
+        "start": "node server.js",
+        "start:tunnel": "bash start-with-tunnel.sh",
+        "quick-tunnel": "bash quick-tunnel.sh",
+        "tunnel": "bash run-tunnel.sh",
+        "tunnel-quick": "cloudflared tunnel --url http://localhost:3000",
+        "dev": "node server.js",
+        "setup-cloudflare": "bash cloudflare-setup.sh",
+        "setup-cloudflare-alt": "bash cloudflare-quick-setup.sh"
     },
     "keywords": [],
     "author": "",
@@ -14,6 +21,7 @@
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",
         "express": "^4.19.2",
+        "franc": "^6.2.0",
         "openai": "^6.7.0"
     }
 }

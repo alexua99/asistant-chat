@@ -5,12 +5,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import { franc } from "franc";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
-app.use(cors());
+
+// Настройка для работы через Cloudflare прокси
+app.set('trust proxy', true);
+
+// CORS: разрешаем доступ откуда угодно
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Forwarded-For'],
+  credentials: false
+}));
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -167,35 +179,178 @@ app.post("/chat", async (req, res) => {
     }
 
     const systemPrompt = (
-      "Ты — консультант по eSIM. Отвечай только на темы, связанные с eSIM: " +
-      "поддерживаемые устройства и операторы, покупка/подключение, установка через QR-код, перенос eSIM, " +
-      "активация/деактивация, конфигурация на iOS/Android, устранение неполадок (ошибки активации, нет сети, APN, роуминг). " +
-      "Если вопрос вне темы eSIM — вежливо откажись и предложи задать вопрос по eSIM. " +
-      "Всегда отвечай на языке, на котором задан вопрос (auto-detect). Если язык неочевиден — отвечай на русском. " +
-      "Отвечай кратко и по шагам."
+      "Ты — дружелюбный и профессиональный консультант по eSIM. " +
+      "Твоя специализация: eSIM технологии, подключение, установка и устранение неполадок.\n\n" +
+      "ОСНОВНЫЕ ТЕМЫ, на которые отвечай:\n" +
+      "- Поддерживаемые устройства (iPhone, Samsung, Google Pixel и др.)\n" +
+      "- Операторы и тарифные планы eSIM\n" +
+      "- Покупка и активация eSIM\n" +
+      "- Установка eSIM через QR-код\n" +
+      "- Перенос eSIM между устройствами\n" +
+      "- Активация и деактивация eSIM\n" +
+      "- Настройка на iOS и Android\n" +
+      "- Устранение неполадок (ошибки активации, нет сети, проблемы с APN, роуминг)\n" +
+      "- Совместимость устройств и операторов\n\n" +
+      "ЕСЛИ ВОПРОС НЕ ПО ТЕМЕ eSIM:\n" +
+      "1. Вежливо признай вопрос и кратко ответь (1-2 предложения)\n" +
+      "2. Мягко направь к теме eSIM: 'Я специализируюсь на eSIM технологиях. Чем могу помочь с установкой или настройкой eSIM?'\n" +
+      "3. Не будь грубым, но будь настойчивым в возврате к теме\n" +
+      "4. Если это приветствие или общий вопрос — отвечай дружелюбно, но сразу предлагай помощь с eSIM\n\n" +
+      "ПРИМЕРЫ реакций на вопросы не по теме:\n" +
+      "- 'Спасибо за вопрос! Я консультант по eSIM. Могу помочь с установкой eSIM на ваше устройство. Какая у вас модель телефона?'\n" +
+      "- 'Интересный вопрос! Моя специализация — eSIM. Может быть, у вас есть вопросы по настройке eSIM или вы хотите подключить eSIM?'\n\n" +
+      "СТИЛЬ ОБЩЕНИЯ:\n" +
+      "- КРИТИЧЕСКИ ВАЖНО: ВСЕГДА отвечай на ОДНОМ И ТОМ ЖЕ ЯЗЫКЕ на протяжении ВСЕГО диалога\n" +
+      "- Язык диалога определяется из первых сообщений пользователя и НЕ МЕНЯЕТСЯ\n" +
+      "- Поддерживай ВСЕ языки мира (400+ языков)\n" +
+      "- НИКОГДА не переключай язык в середине диалога\n" +
+      "- БУДЬ ЕСТЕСТВЕННЫМ: Общайся как настоящий человек, а не робот\n" +
+      "- Избегай шаблонных фраз типа 'Пожалуйста, введите', 'Рекомендуется', 'Необходимо'\n" +
+      "- Говори просто и понятно, как в обычном разговоре\n" +
+      "- Помни контекст предыдущих сообщений - не повторяй уже сказанное\n" +
+      "- Если пользователь уже что-то спрашивал или делал - учитывай это в ответе\n" +
+      "- КРАТКОСТЬ: отвечай кратко, но информативно (2-3 предложения максимум)\n" +
+      "- Дружелюбный тон, но без излишней формальности\n" +
+      "- Используй эмодзи умеренно и только когда уместно\n" +
+      "- Будь профессиональным, но теплым и человечным\n" +
+      "- ВАЖНО: Никогда не смешивай языки в одном ответе"
     );
 
-    // Простейшее определение языка последнего сообщения
+    // Определение языка сообщения (через библиотеку franc + доп. проверки)
     function detectLang(text) {
-      if (/[А-Яа-яЁё]/.test(text)) return "Russian";
-      if (/[A-Za-z]/.test(text)) return "English";
-      return "Russian"; // дефолт
-    }
-    // Определяем язык ответа: если текст пустой/служебный, используем язык из истории
-    function getLastLanguageFromHistory(hist) {
-      if (!Array.isArray(hist)) return null;
-      for (let i = hist.length - 1; i >= 0; i--) {
-        const m = hist[i];
-        if (!m || !m.content) continue;
-        const lang = detectLang(String(m.content));
-        if (lang) return lang;
+      if (!text || typeof text !== 'string') return null;
+      
+      const t = text.trim();
+      if (t.length === 0) return null;
+      
+      // Используем franc для определения языка (поддерживает 400+ языков)
+      try {
+        const langCode = franc(t, { minLength: 3 });
+        
+        // Маппинг кодов ISO 639-3 в понятные названия для промпта
+        const langMap = {
+          'rus': 'Russian',
+          'eng': 'English',
+          'spa': 'Spanish',
+          'fra': 'French',
+          'deu': 'German',
+          'ita': 'Italian',
+          'por': 'Portuguese',
+          'tur': 'Turkish',
+          'pol': 'Polish',
+          'ces': 'Czech',
+          'ell': 'Greek',
+          'cmn': 'Chinese',
+          'jpn': 'Japanese',
+          'kor': 'Korean',
+          'ara': 'Arabic',
+          'hin': 'Hindi',
+          'vie': 'Vietnamese',
+          'tha': 'Thai',
+          'ind': 'Indonesian',
+          'nld': 'Dutch',
+          'swe': 'Swedish',
+          'nor': 'Norwegian',
+          'dan': 'Danish',
+          'fin': 'Finnish',
+          'ron': 'Romanian',
+          'ukr': 'Ukrainian',
+          'bul': 'Bulgarian',
+          'hrv': 'Croatian',
+          'srp': 'Serbian',
+          'slk': 'Slovak',
+          'hun': 'Hungarian',
+          'heb': 'Hebrew',
+          'fas': 'Persian',
+          'urd': 'Urdu',
+          'ben': 'Bengali',
+          'tam': 'Tamil',
+          'tel': 'Telugu',
+          'mar': 'Marathi',
+          'zho': 'Chinese'
+        };
+        
+        // Если определили язык с высокой уверенностью
+        if (langCode && langCode !== 'und') {
+          // Используем маппинг если есть, иначе возвращаем код языка
+          if (langMap[langCode]) {
+            return langMap[langCode];
+          }
+          // Если языка нет в маппинге, возвращаем код - модель OpenAI понимает ISO коды
+          return langCode;
+        }
+        
+        // Fallback для коротких текстов или неопределенных
+        // Проверяем специфичные паттерны для важных языков
+        if (/[А-Яа-яЁё]/.test(t)) return "Russian";
+        if (/[\u4e00-\u9fff]/.test(t)) return "Chinese";
+        if (/[\u3040-\u309f\u30a0-\u30ff]/.test(t)) return "Japanese";
+        if (/[\uac00-\ud7a3]/.test(t)) return "Korean";
+        if (/[\u0600-\u06ff]/.test(t)) return "Arabic";
+        
+        // Если только латиница без спецсимволов — английский
+        if (/^[A-Za-z0-9\s\.,!?;:'"\-\(\)]+$/.test(t)) return "English";
+        
+      } catch (err) {
+        console.error("Language detection error:", err);
       }
+      
+      // Дефолт
       return null;
+    }
+    // Определяем язык ответа: стабильно используем язык из первых сообщений диалога
+    function getConversationLanguage(hist, currentMessage) {
+      if (!Array.isArray(hist)) hist = [];
+      
+      // Приоритет 1: Определяем язык из первых 3 сообщений пользователя в диалоге
+      // Это обеспечивает стабильность - язык устанавливается в начале и не меняется
+      const userMessages = [];
+      for (const m of hist) {
+        if (m?.role === 'user' && m?.content) {
+          userMessages.push(String(m.content));
+        }
+      }
+      // Добавляем текущее сообщение
+      if (currentMessage) userMessages.push(currentMessage);
+      
+      // Анализируем первые сообщения пользователя для определения языка
+      let conversationLang = null;
+      const langVotes = {};
+      
+      // Смотрим первые 3 сообщения пользователя
+      for (let i = 0; i < Math.min(3, userMessages.length); i++) {
+        const lang = detectLang(userMessages[i]);
+        if (lang) {
+          langVotes[lang] = (langVotes[lang] || 0) + 1;
+        }
+      }
+      
+      // Выбираем язык, который встречался чаще всего в первых сообщениях
+      let maxVotes = 0;
+      for (const [lang, votes] of Object.entries(langVotes)) {
+        if (votes > maxVotes) {
+          maxVotes = votes;
+          conversationLang = lang;
+        }
+      }
+      
+      // Если язык определился - возвращаем его (это стабильный язык диалога)
+      if (conversationLang) return conversationLang;
+      
+      // Приоритет 2: Если история пуста, используем язык текущего сообщения
+      if (hist.length === 0) {
+        return detectLang(currentMessage) || "Russian";
+      }
+      
+      // Приоритет 3: Дефолт
+      return "Russian";
     }
 
     const isServiceMessage = !message || message.toLowerCase() === 'start';
-    const lastLang = getLastLanguageFromHistory(history);
-    const replyLanguage = isServiceMessage && lastLang ? lastLang : detectLang(message);
+    const replyLanguage = getConversationLanguage(history, message);
+    
+    // Если это начало диалога, добавляем инструкцию поприветствовать пользователя на его языке
+    const isConversationStart = !history || history.length === 0;
 
     // Небольшой извлекатель устройства из свободного текста (ru/en)
     function extractDeviceFromText(text) {
@@ -274,47 +429,199 @@ app.post("/chat", async (req, res) => {
       : "";
 
     // Режим: пока нет ТОЧНОГО совпадения по Order Number — не ведём другой диалог, помогаем найти номер
-    const isConversationStart = !history || history.length === 0;
+    // isConversationStart уже определен выше
     const onlyDigits = (v) => (typeof v === 'string' ? v.replace(/\D+/g, '') : '');
     const orderCandidate = onlyDigits(order || "");
     const hasOrderCandidate = orderCandidate.length >= 5;
+    
+    // Проверяем, просит ли пользователь помощи
+    const helpKeywords = {
+      ru: ['помоги', 'помощь', 'как найти', 'не могу найти', 'не знаю', 'где найти', 'где взять', 'что делать'],
+      en: ['help', 'how to find', "can't find", "don't know", 'where to find', 'where is', 'what to do', 'assist'],
+      es: ['ayuda', 'cómo encontrar', 'no puedo encontrar', 'no sé', 'dónde encontrar'],
+      fr: ['aide', 'comment trouver', "je ne trouve pas", "je ne sais pas", 'où trouver'],
+      de: ['hilfe', 'wie finden', 'kann nicht finden', 'weiß nicht', 'wo finden']
+    };
+    
+    const messageLower = message.toLowerCase();
+    const asksForHelp = Object.values(helpKeywords).some(keywords => 
+      keywords.some(keyword => messageLower.includes(keyword))
+    );
+    
+    // Подсчитываем неудачные попытки ввода номера
+    let failedAttempts = 0;
+    if (Array.isArray(history)) {
+      // Считаем сообщения пользователя где был введен номер, но заказ не найден
+      for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg?.role === 'user') {
+          const msgDigits = onlyDigits(msg.content || '');
+          if (msgDigits.length >= 5) {
+            // Проверяем был ли ответ о том что заказ не найден
+            if (i + 1 < history.length) {
+              const nextMsg = history[i + 1];
+              if (nextMsg?.role === 'assistant' && 
+                  (nextMsg.content?.toLowerCase().includes('not found') || 
+                   nextMsg.content?.toLowerCase().includes('не найден') ||
+                   nextMsg.content?.toLowerCase().includes('не найдено'))) {
+                failedAttempts++;
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Помогаем только если попросили помощи ИЛИ было 2+ неудачных попытки
+    const shouldProvideHelp = asksForHelp || failedAttempts >= 2;
 
     if (!hasOrderCandidate) {
-      // нет номера заказа — подсказываем, где найти
-      const hint = replyLanguage === "English"
-        ? "Please enter your exact Order Number (digits only, 5+). You can find it in: email receipt, payment confirmation page, or your account order history. Example: 15622."
-        : "Пожалуйста, введите точный номер заказа (только цифры, от 5). Его можно найти: в письме‑квитанции на email, на странице подтверждения оплаты, или в истории заказов в аккаунте. Пример: 15622.";
+      // нет номера заказа — используем AI для естественного ответа с учетом контекста
+      const hasEmail = email && email.trim().length > 0;
+      const hasIccid = iccid && iccid.trim().length >= 10;
+      
+      // Собираем контекст из истории
+      const conversationContext = Array.isArray(history) && history.length > 0
+        ? `Previous conversation: ${history.slice(-4).map(m => `${m.role}: ${m.content}`).join(' | ')}`
+        : 'This is the start of conversation.';
+      
+      let contextPrompt = `You are a helpful eSIM consultant assistant. User needs to provide Order Number but hasn't yet.\n\n`;
+      contextPrompt += `${conversationContext}\n\n`;
+      contextPrompt += `Current user message: "${message}"\n\n`;
+      
+      if (hasEmail) {
+        const emailMatches = findOrders({ email, orderNumber: null, iccid: null });
+        if (emailMatches.length > 0) {
+          const orderNumbers = emailMatches.slice(0, 3).map(o => o["Order Number "] || o["order_number"]).join(", ");
+          contextPrompt += `I found orders for email ${email}: ${orderNumbers}. Guide user naturally.`;
+        } else {
+          contextPrompt += `User provided email ${email} but no orders found. Help them check email or find order another way.`;
+        }
+      } else if (hasIccid) {
+        const iccidMatches = findOrders({ email: null, orderNumber: null, iccid });
+        if (iccidMatches.length > 0) {
+          const orderNumbers = iccidMatches.map(o => o["Order Number "] || o["order_number"]).join(", ");
+          contextPrompt += `Found orders for ICCID: ${orderNumbers}. Help user use this.`;
+        }
+      } else {
+        // Если пользователь уже спрашивал о помощи или открыл почту
+        if (asksForHelp || messageLower.includes('почт') || messageLower.includes('email') || messageLower.includes('открыл')) {
+          contextPrompt += `User is actively looking for order number. They mentioned opening email/mail. Give specific, step-by-step guidance on WHERE exactly in the email to look (subject line, body, attachments). Be conversational, not robotic.`;
+        } else {
+          contextPrompt += `Briefly and naturally ask for Order Number or help them find it. Be friendly, not formal.`;
+        }
+      }
+      
+      contextPrompt += `\n\nRespond in ${replyLanguage} naturally, as a real assistant would. Don't use robotic phrases like "Please enter" or templates. Be conversational and helpful.`;
+      
+      const hintCompletion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { 
+            role: "system", 
+            content: `You are a friendly eSIM consultant assistant. Always respond in ${replyLanguage}. Be natural, conversational, and helpful. Avoid robotic phrases and templates. Speak like a real person helping a customer.` 
+          },
+          ...(Array.isArray(history) ? history.slice(-3) : []), // Последние 3 сообщения для контекста
+          { role: "user", content: contextPrompt }
+        ],
+        max_tokens: 150
+      });
+      
+      const hint = hintCompletion.choices?.[0]?.message?.content?.trim();
+      
       return res.json({ reply: hint });
     }
 
-    // есть кандидат номера — если не найдено точное совпадение, помогаем вводу
+    // есть кандидат номера — если не найдено точное совпадение
     if (hasOrderCandidate && matched.length === 0) {
-      const notFound = replyLanguage === "English"
-        ? `Order not found: ${orderCandidate}. Please check digits (no spaces) and try again.`
-        : `Заказ не найден: ${orderCandidate}. Проверьте номер (без пробелов) и попробуйте снова.`;
+      // Используем AI для естественного ответа с учетом контекста
+      ensureOrdersFresh();
+      const similarOrders = cachedOrders.filter((o) => {
+        const orderVal = String(o["Order Number "] || o["order_number"] || "").replace(/\D+/g, '');
+        return (orderVal.length >= orderCandidate.length && orderVal.endsWith(orderCandidate)) || 
+               (orderCandidate.length >= 4 && orderVal.includes(orderCandidate));
+      }).slice(0, 2);
+      
+      const hasEmail = email && email.trim().length > 0;
+      const hasIccid = iccid && iccid.trim().length >= 10;
+      
+      const conversationContext = Array.isArray(history) && history.length > 0
+        ? `Previous conversation: ${history.slice(-4).map(m => `${m.role}: ${m.content}`).join(' | ')}`
+        : '';
+      
+      let helpContext = `User entered order number "${orderCandidate}" but it wasn't found in the system.\n\n`;
+      helpContext += `${conversationContext}\n\n`;
+      helpContext += `Current message: "${message}"\n\n`;
+      
+      if (similarOrders.length > 0) {
+        const similarNums = similarOrders.map(o => o["Order Number "] || o["order_number"]).join(", ");
+        helpContext += `Found similar order numbers: ${similarNums}. Suggest checking if one matches.\n`;
+      }
+      
+      if (hasEmail) {
+        const emailMatches = findOrders({ email, orderNumber: null, iccid: null });
+        if (emailMatches.length > 0) {
+          const orderNumbers = emailMatches.slice(0, 3).map(o => o["Order Number "] || o["order_number"]).join(", ");
+          helpContext += `Found orders for their email: ${orderNumbers}. Help them use correct number.\n`;
+        }
+      }
+      
+      helpContext += `Respond naturally in ${replyLanguage}, like a real person helping. Don't use templates or robotic phrases. Be helpful and friendly.`;
+      
+      const notFoundCompletion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { 
+            role: "system", 
+            content: `You are a friendly eSIM consultant assistant. Always respond in ${replyLanguage}. Be natural and conversational. Avoid templates and robotic phrases. Speak like a real person.` 
+          },
+          ...(Array.isArray(history) ? history.slice(-3) : []),
+          { role: "user", content: helpContext }
+        ],
+        max_tokens: 120
+      });
+      
+      const notFound = notFoundCompletion.choices?.[0]?.message?.content?.trim();
+      
       return res.json({ reply: notFound });
     }
 
     // Если заказ найден и устройство ещё не известно — краткая сводка + запрос модели
     if (matched.length > 0 && !effMake && !effModel) {
       const o = matched[0];
-      const parts = [
-        `Order summary:`,
-        `- Order: ${o["Order Number "] || o["order_number"]}`,
-        `- Email: ${o["email"]}`,
-        `- Country: ${o["GEO"]}`,
-        `- Plan: ${o["Data"]}`,
-        `- Price: ${(o["Price "] ?? o["Price"] ?? o["price"] ?? "")} ${o["Currency"] || ""}`,
-        o["Commission "] ? `- Commission: ${o["Commission "]}` : null,
-        o["Coupon"] ? `- Coupon: ${o["Coupon"]}` : null,
-        o["Referring site"] ? `- Source: ${o["Referring site"]}` : null,
-        `- ICCID: ${o["ICCID"]}`,
-        ""
-      ].filter(Boolean);
-      const listInfo = parts.join("\n");
-      const askDevice = replyLanguage === "English"
-        ? "Please tell me which device you use (manufacturer and model)."
-        : "Подскажите, каким устройством вы пользуетесь (производитель и модель)?";
+      
+      // Генерируем краткую сводку заказа на нужном языке через AI
+      const summaryPrompt = `Brief order summary in ${replyLanguage}. Key info only: Order ${o["Order Number "] || o["order_number"]}, Email ${o["email"]}, Country ${o["GEO"]}, Plan ${o["Data"]}, Price ${(o["Price "] ?? o["Price"] ?? o["price"] ?? "")} ${o["Currency"] || ""}, ICCID ${o["ICCID"]}. Max 3-4 short lines.`;
+      
+      const summaryCompletion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: `You are an eSIM consultant. Always respond in ${replyLanguage}. Be very brief. Max 4 short lines.` },
+          { role: "user", content: summaryPrompt }
+        ],
+        max_tokens: 80
+      });
+      
+      const listInfo = summaryCompletion.choices?.[0]?.message?.content?.trim() || 
+        `Order summary:\n- Order: ${o["Order Number "] || o["order_number"]}\n- Email: ${o["email"]}\n- Country: ${o["GEO"]}\n- Plan: ${o["Data"]}\n- Price: ${(o["Price "] ?? o["Price"] ?? o["price"] ?? "")} ${o["Currency"] || ""}\n- ICCID: ${o["ICCID"]}`;
+      
+      // Запрос устройства на нужном языке (кратко)
+      const askDevicePrompt = `Ask user in ${replyLanguage} which device they use (manufacturer and model). One short sentence.`;
+      
+      const askDeviceCompletion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: `You are an eSIM consultant. Always respond in ${replyLanguage}. Be very brief - one sentence only.` },
+          { role: "user", content: askDevicePrompt }
+        ],
+        max_tokens: 30
+      });
+      
+      const askDevice = askDeviceCompletion.choices?.[0]?.message?.content?.trim() || 
+        (replyLanguage === "English"
+          ? "Please tell me which device you use (manufacturer and model)."
+          : "Подскажите, каким устройством вы пользуетесь (производитель и модель)?");
+      
       return res.json({ reply: listInfo, followUp: askDevice });
     }
 
@@ -323,7 +630,7 @@ app.post("/chat", async (req, res) => {
       geoLine ? { role: "system", content: geoLine + "Учитывай локальные особенности операторов и роуминга этой страны. Не раскрывай источник определения страны." } : null,
       ordersContext ? { role: "system", content: ordersContext } : null,
       deviceContext ? { role: "system", content: deviceContext } : null,
-      { role: "system", content: `Always answer in ${replyLanguage}.` },
+      { role: "system", content: `CRITICAL LANGUAGE RULE: You MUST respond ONLY in ${replyLanguage} language for this ENTIRE conversation. This is the established conversation language and MUST NOT change. Use ${replyLanguage} consistently regardless of what language appears in individual messages. If ${replyLanguage} is a language code (like 'fra', 'spa'), use that language. Never switch languages mid-conversation.` },
       ...(Array.isArray(history) ? history : []),
       { role: "user", content: message }
     ].filter(Boolean);
@@ -333,7 +640,8 @@ app.post("/chat", async (req, res) => {
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages
+      messages,
+      max_tokens: 200  // Ограничиваем длину ответа для краткости
     });
 
     const text = completion.choices?.[0]?.message?.content ?? "";
@@ -345,8 +653,10 @@ app.post("/chat", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });
+
 
 

@@ -42,3 +42,7 @@ build/
 *.temp
 .cache/
 
+# Cloudflare Tunnel credentials
+.cloudflared/
+*.cloudflared.json
+

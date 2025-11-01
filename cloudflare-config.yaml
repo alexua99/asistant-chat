@@ -1,0 +1,18 @@
+# Cloudflare Tunnel Configuration
+# Использование: cloudflared tunnel --config cloudflare-config.yaml run
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /home/alexua99/.cloudflared/YOUR_TUNNEL_ID.json
+
+ingress:
+  # Перенаправление основного домена на локальный сервер
+  - hostname: your-domain.com
+    service: http://localhost:3000
+  
+  # Альтернативный вариант с www поддоменом
+  - hostname: www.your-domain.com
+    service: http://localhost:3000
+  
+  # Catch-all правило (должно быть последним)
+  - service: http_status:404
+
