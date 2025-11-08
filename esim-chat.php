@@ -40,7 +40,7 @@ class ESIM_Chat {
         add_action('wp_footer', array($this, 'render_floating_button'));
         add_action('wp_ajax_esim_chat_send', array($this, 'handle_chat_request'));
         add_action('wp_ajax_nopriv_esim_chat_send', array($this, 'handle_chat_request'));
-        add_action('wp_ajax_esim_chat_git_update', array($this, 'handle_git_update'));
+        add_action('wp_ajax_esim_chat_test', array($this, 'handle_test_chat_request'));
     }
     
     public function init() {
@@ -63,11 +63,15 @@ class ESIM_Chat {
         register_setting('esim_chat_settings', 'esim_chat_mode');
         register_setting('esim_chat_settings', 'esim_chat_api_url');
         register_setting('esim_chat_settings', 'esim_chat_openai_key');
+        register_setting('esim_chat_settings', 'esim_chat_openai_model');
         register_setting('esim_chat_settings', 'esim_chat_enabled');
         register_setting('esim_chat_settings', 'esim_chat_display_type');
         register_setting('esim_chat_settings', 'esim_chat_language');
         register_setting('esim_chat_settings', 'esim_chat_response_scenarios');
         register_setting('esim_chat_settings', 'esim_chat_response_length');
+        register_setting('esim_chat_settings', 'esim_chat_apn_data');
+        register_setting('esim_chat_settings', 'esim_chat_ip_route_data');
+        register_setting('esim_chat_settings', 'esim_chat_qa_data');
         
         add_settings_section(
             'esim_chat_main_section',
@@ -103,6 +107,14 @@ class ESIM_Chat {
             'esim_chat_openai_key',
             'OpenAI API Key',
             array($this, 'render_openai_key_field'),
+            'esim-chat',
+            'esim_chat_main_section'
+        );
+        
+        add_settings_field(
+            'esim_chat_openai_model',
+            'AI Model',
+            array($this, 'render_openai_model_field'),
             'esim-chat',
             'esim_chat_main_section'
         );
@@ -146,6 +158,145 @@ class ESIM_Chat {
             'esim-chat',
             'esim_chat_scenarios_section'
         );
+        
+        add_settings_section(
+            'esim_chat_apn_section',
+            'APN Data',
+            array($this, 'render_apn_section_description'),
+            'esim-chat'
+        );
+        
+        add_settings_field(
+            'esim_chat_apn_data',
+            'APN Information',
+            array($this, 'render_apn_data_field'),
+            'esim-chat',
+            'esim_chat_apn_section'
+        );
+        
+        add_settings_field(
+            'esim_chat_ip_route_data',
+            'IP Route Information',
+            array($this, 'render_ip_route_data_field'),
+            'esim-chat',
+            'esim_chat_apn_section'
+        );
+        
+        add_settings_section(
+            'esim_chat_qa_section',
+            'Question & Answer Database',
+            array($this, 'render_qa_section_description'),
+            'esim-chat'
+        );
+        
+        add_settings_field(
+            'esim_chat_qa_data',
+            'Q&A Pairs',
+            array($this, 'render_qa_data_field'),
+            'esim-chat',
+            'esim_chat_qa_section'
+        );
+    }
+    
+    public function render_qa_section_description() {
+        echo '<p>Add question and answer pairs. When users ask questions that match or are similar to your questions, the AI will use your provided answers.</p>';
+    }
+    
+    public function render_qa_data_field() {
+        $value = get_option('esim_chat_qa_data', '');
+        $editor_id = 'esim_chat_qa_data';
+        
+        wp_editor(
+            $value,
+            $editor_id,
+            array(
+                'textarea_name' => 'esim_chat_qa_data',
+                'textarea_rows' => 20,
+                'media_buttons' => false,
+                'teeny' => true,
+                'tinymce' => array(
+                    'toolbar1' => 'bold,italic,underline,bullist,numlist,link,unlink',
+                    'toolbar2' => '',
+                ),
+            )
+        );
+        ?>
+        <p class="description">
+            <strong>How to format Q&A pairs:</strong><br>
+            • Use format: <code>Question: Answer</code><br>
+            • Example: <code>What is eSIM?: eSIM is an embedded SIM card that allows you to activate a cellular plan without a physical SIM card.</code><br>
+            • Example: <code>How do I install eSIM?: To install eSIM, scan the QR code provided by your operator in your device settings.</code><br>
+            • You can add multiple Q&A pairs, one per line or in a list format<br>
+            • The AI will match user questions to your questions and use your answers when appropriate<br>
+            • Use clear, specific questions that users might ask
+        </p>
+        <?php
+    }
+    
+    public function render_ip_route_data_field() {
+        $value = get_option('esim_chat_ip_route_data', '');
+        $editor_id = 'esim_chat_ip_route_data';
+        
+        wp_editor(
+            $value,
+            $editor_id,
+            array(
+                'textarea_name' => 'esim_chat_ip_route_data',
+                'textarea_rows' => 15,
+                'media_buttons' => false,
+                'teeny' => true,
+                'tinymce' => array(
+                    'toolbar1' => 'bold,italic,underline,bullist,numlist,link,unlink',
+                    'toolbar2' => '',
+                ),
+            )
+        );
+        ?>
+        <p class="description">
+            <strong>How to format IP route data:</strong><br>
+            • Use format: <code>Country/Operator: IP route</code><br>
+            • Example: <code>Japan/Docomo: 10.0.0.0/8</code><br>
+            • Example: <code>Japan/SoftBank: 192.168.0.0/16</code><br>
+            • Example: <code>USA/AT&T: 172.16.0.0/12</code><br>
+            • You can add multiple entries, one per line or in a list format<br>
+            • The AI will use this information when users ask about IP route settings
+        </p>
+        <?php
+    }
+    
+    public function render_apn_section_description() {
+        echo '<p>Add APN (Access Point Name) and IP route information for different countries and operators. This information will be used by the AI when answering APN and IP route related questions.</p>';
+    }
+    
+    public function render_apn_data_field() {
+        $value = get_option('esim_chat_apn_data', '');
+        $editor_id = 'esim_chat_apn_data';
+        
+        wp_editor(
+            $value,
+            $editor_id,
+            array(
+                'textarea_name' => 'esim_chat_apn_data',
+                'textarea_rows' => 15,
+                'media_buttons' => false,
+                'teeny' => true,
+                'tinymce' => array(
+                    'toolbar1' => 'bold,italic,underline,bullist,numlist,link,unlink',
+                    'toolbar2' => '',
+                ),
+            )
+        );
+        ?>
+        <p class="description">
+            <strong>How to format APN data:</strong><br>
+            • Use format: <code>Country/Operator: APN name</code><br>
+            • Example: <code>Japan/Docomo: spmode.ne.jp</code><br>
+            • Example: <code>Japan/SoftBank: jp-d01.sbm.jp</code><br>
+            • Example: <code>USA/AT&T: broadband</code><br>
+            • You can add multiple entries, one per line or in a list format<br>
+            • The AI will use this information when users ask about APN settings
+        </p>
+        <?php
     }
     
     public function render_scenarios_section_description() {
@@ -213,6 +364,20 @@ class ESIM_Chat {
         $value = get_option('esim_chat_openai_key', '');
         echo '<input type="password" name="esim_chat_openai_key" value="' . esc_attr($value) . '" class="regular-text" />';
         echo '<p class="description">Your OpenAI API key (starts with sk-). Get it at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></p>';
+    }
+    
+    public function render_openai_model_field() {
+        $value = get_option('esim_chat_openai_model', 'gpt-4o-mini');
+        ?>
+        <select name="esim_chat_openai_model" id="esim_chat_openai_model">
+            <option value="gpt-4o" <?php selected($value, 'gpt-4o'); ?>>GPT-4o (Most capable, best for complex tasks)</option>
+            <option value="gpt-4o-mini" <?php selected($value, 'gpt-4o-mini'); ?>>GPT-4o Mini (Recommended, fast and efficient)</option>
+            <option value="gpt-4-turbo" <?php selected($value, 'gpt-4-turbo'); ?>>GPT-4 Turbo (High quality, slower)</option>
+            <option value="gpt-4" <?php selected($value, 'gpt-4'); ?>>GPT-4 (High quality, slower)</option>
+            <option value="gpt-3.5-turbo" <?php selected($value, 'gpt-3.5-turbo'); ?>>GPT-3.5 Turbo (Fast, lower cost)</option>
+        </select>
+        <p class="description">Select the AI model for chat conversations. GPT-4o Mini is recommended for best balance of quality and speed.</p>
+        <?php
     }
     
     public function render_api_url_field() {
@@ -302,121 +467,213 @@ class ESIM_Chat {
             
             <hr>
             
-            <h2>Update from Git</h2>
-            <p>Update the plugin from the Git repository. This will run <code>git pull</code> in the plugin directory.</p>
-            <button type="button" id="esim-chat-git-update-btn" class="button button-secondary">
-                <span class="dashicons dashicons-update" style="vertical-align: middle;"></span> Update from Git
-            </button>
-            <span id="esim-chat-git-update-status" style="margin-left: 10px;"></span>
+            <h2>Test Chat</h2>
+            <p>Test how the AI responds to questions. This is useful for checking the AI's behavior before making it available to users.</p>
+            
+            <div id="esim-chat-test-container" style="max-width: 800px; margin-top: 20px;">
+                <div style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 15px;">
+                    <div id="esim-chat-test-messages" style="min-height: 200px; max-height: 400px; overflow-y: auto; margin-bottom: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+                        <div style="color: #666; font-style: italic;">Test messages will appear here...</div>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="esim-chat-test-input" placeholder="Enter your test question..." style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" />
+                        <button type="button" id="esim-chat-test-send" class="button button-primary">Send</button>
+                        <button type="button" id="esim-chat-test-clear" class="button">Clear</button>
+                    </div>
+                </div>
+            </div>
             
             <script>
             jQuery(document).ready(function($) {
-                $('#esim-chat-git-update-btn').on('click', function() {
-                    var $btn = $(this);
-                    var $status = $('#esim-chat-git-update-status');
+                var testHistory = [];
+                var isProcessing = false;
+                
+                function addTestMessage(text, role) {
+                    var $messages = $('#esim-chat-test-messages');
+                    if ($messages.find('div:first').text() === 'Test messages will appear here...') {
+                        $messages.empty();
+                    }
                     
-                    $btn.prop('disabled', true).html('<span class="dashicons dashicons-update" style="vertical-align: middle; animation: spin 1s linear infinite;"></span> Updating...');
-                    $status.html('');
+                    var $message = $('<div style="margin-bottom: 15px; padding: 10px; border-radius: 4px; ' + 
+                        (role === 'user' ? 'background: #e3f2fd; margin-left: 20%;' : 'background: #f5f5f5; margin-right: 20%;') + '">');
+                    $message.append('<strong style="display: block; margin-bottom: 5px; color: #333;">' + (role === 'user' ? 'You' : 'AI') + ':</strong>');
+                    $message.append('<div style="color: #333; white-space: pre-wrap;">' + $('<div>').text(text).html() + '</div>');
+                    $messages.append($message);
+                    $messages.scrollTop($messages[0].scrollHeight);
+                }
+                
+                function sendTestMessage() {
+                    var $input = $('#esim-chat-test-input');
+                    var text = $input.val().trim();
+                    
+                    if (!text || isProcessing) return;
+                    
+                    addTestMessage(text, 'user');
+                    testHistory.push({ role: 'user', content: text });
+                    $input.val('');
+                    
+                    isProcessing = true;
+                    $('#esim-chat-test-send').prop('disabled', true).text('Sending...');
                     
                     $.ajax({
                         url: ajaxurl,
                         type: 'POST',
                         data: {
-                            action: 'esim_chat_git_update',
-                            nonce: '<?php echo wp_create_nonce('esim_chat_git_update'); ?>'
+                            action: 'esim_chat_test',
+                            nonce: '<?php echo wp_create_nonce('esim_chat_test'); ?>',
+                            message: text,
+                            history: JSON.stringify(testHistory)
                         },
                         success: function(response) {
-                            if (response.success) {
-                                $status.html('<span style="color: #46b450;">✓ ' + $('<div>').text(response.data.message || 'Updated successfully!').html() + '</span>');
-                                if (response.data.output) {
-                                    $status.append('<pre style="background: #f0f0f0; padding: 10px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-size: 12px;">' + $('<div>').text(response.data.output).html() + '</pre>');
-                                }
+                            if (response.success && response.data && response.data.reply) {
+                                addTestMessage(response.data.reply, 'assistant');
+                                testHistory.push({ role: 'assistant', content: response.data.reply });
                             } else {
-                                $status.html('<span style="color: #dc3232;">✗ ' + $('<div>').text(response.data.message || 'Update failed!').html() + '</span>');
-                                if (response.data.output) {
-                                    $status.append('<pre style="background: #f0f0f0; padding: 10px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-size: 12px; color: #dc3232;">' + $('<div>').text(response.data.output).html() + '</pre>');
+                                var errorMsg = 'Unknown error';
+                                if (response.data && response.data.message) {
+                                    errorMsg = response.data.message;
+                                } else if (response.data) {
+                                    errorMsg = JSON.stringify(response.data);
+                                }
+                                addTestMessage('Error: ' + errorMsg, 'assistant');
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            var errorMsg = 'Could not connect to server';
+                            if (xhr.responseText) {
+                                try {
+                                    var errorData = JSON.parse(xhr.responseText);
+                                    if (errorData.data && errorData.data.message) {
+                                        errorMsg = errorData.data.message;
+                                    }
+                                } catch(e) {
+                                    errorMsg = 'Server error: ' + xhr.status + ' ' + error;
                                 }
                             }
-                            $btn.prop('disabled', false).html('<span class="dashicons dashicons-update" style="vertical-align: middle;"></span> Update from Git');
+                            addTestMessage('Error: ' + errorMsg, 'assistant');
                         },
-                        error: function() {
-                            $status.html('<span style="color: #dc3232;">✗ Error: Could not connect to server</span>');
-                            $btn.prop('disabled', false).html('<span class="dashicons dashicons-update" style="vertical-align: middle;"></span> Update from Git');
+                        complete: function() {
+                            isProcessing = false;
+                            $('#esim-chat-test-send').prop('disabled', false).text('Send');
                         }
                     });
+                }
+                
+                $('#esim-chat-test-send').on('click', sendTestMessage);
+                $('#esim-chat-test-input').on('keypress', function(e) {
+                    if (e.which === 13) {
+                        sendTestMessage();
+                    }
+                });
+                $('#esim-chat-test-clear').on('click', function() {
+                    $('#esim-chat-test-messages').html('<div style="color: #666; font-style: italic;">Test messages will appear here...</div>');
+                    testHistory = [];
                 });
             });
             </script>
-            <style>
-            @keyframes spin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-            }
-            </style>
         </div>
         <?php
     }
     
-    public function handle_git_update() {
-        // Check permissions
+    public function handle_test_chat_request() {
+        // Check permissions - only admins can test
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array('message' => 'Insufficient permissions'));
             return;
         }
         
         // Verify nonce
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'esim_chat_git_update')) {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'esim_chat_test')) {
             wp_send_json_error(array('message' => 'Security check failed'));
             return;
         }
         
-        // Get plugin directory
-        $plugin_dir = dirname(__FILE__);
+        $mode = get_option('esim_chat_mode', 'openai');
         
-        // Check if .git directory exists
-        if (!is_dir($plugin_dir . '/.git')) {
-            wp_send_json_error(array('message' => 'Git repository not found in plugin directory'));
+        if ($mode === 'external') {
+            // For external server mode, just return error
+            wp_send_json_error(array('message' => 'Test chat is only available for OpenAI mode'));
             return;
         }
         
-        // Check if git command is available
-        $git_check = shell_exec('which git 2>&1');
-        if (empty($git_check) || strpos($git_check, 'not found') !== false) {
-            wp_send_json_error(array('message' => 'Git command not found. Please install Git on your server.'));
+        // Use the same logic as regular chat request
+        $api_key = get_option('esim_chat_openai_key', '');
+        if (empty($api_key)) {
+            wp_send_json_error(array('message' => 'OpenAI API key is not configured. Please set it in the plugin settings.'));
             return;
         }
         
-        // Change to plugin directory and run git pull
-        $command = 'cd ' . escapeshellarg($plugin_dir) . ' && git pull 2>&1';
+        $message = sanitize_text_field($_POST['message'] ?? '');
+        $history = isset($_POST['history']) ? json_decode(stripslashes($_POST['history']), true) : array();
         
-        // Execute git pull
-        $output = shell_exec($command);
-        
-        if ($output === null) {
-            wp_send_json_error(array('message' => 'Failed to execute git pull command'));
+        if (empty($message)) {
+            wp_send_json_error(array('message' => 'Message is required'));
             return;
         }
         
-        // Check if update was successful
-        $output_trimmed = trim($output);
-        $is_success = (
-            strpos($output_trimmed, 'Already up to date') !== false ||
-            strpos($output_trimmed, 'Updating') !== false ||
-            strpos($output_trimmed, 'Fast-forward') !== false ||
-            strpos($output_trimmed, 'Merge made') !== false ||
-            preg_match('/\d+ file[s]? changed/', $output_trimmed)
+        // Get user IP
+        $user_ip = $this->get_user_ip();
+        
+        // Get system prompt
+        $system_prompt = $this->get_system_prompt($user_ip);
+        
+        // Build messages array
+        $messages = array(
+            array('role' => 'system', 'content' => $system_prompt)
         );
         
-        if ($is_success) {
+        // Add history
+        if (is_array($history) && !empty($history)) {
+            foreach ($history as $msg) {
+                if (isset($msg['role']) && isset($msg['content'])) {
+                    $messages[] = array(
+                        'role' => sanitize_text_field($msg['role']),
+                        'content' => sanitize_text_field($msg['content'])
+                    );
+                }
+            }
+        }
+        
+        // Add current message
+        $messages[] = array('role' => 'user', 'content' => $message);
+        
+        // Get selected model
+        $model = get_option('esim_chat_openai_model', 'gpt-4o-mini');
+        
+        // Send request to OpenAI
+        $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
+            'timeout' => 30,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key
+            ),
+            'body' => json_encode(array(
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 500,
+                'temperature' => 0.7
+            ))
+        ));
+        
+        if (is_wp_error($response)) {
+            wp_send_json_error(array('message' => 'OpenAI API connection error: ' . $response->get_error_message()));
+            return;
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (isset($data['error'])) {
+            wp_send_json_error(array('message' => 'OpenAI API error: ' . ($data['error']['message'] ?? 'Unknown error')));
+            return;
+        }
+        
+        if (isset($data['choices'][0]['message']['content'])) {
             wp_send_json_success(array(
-                'message' => 'Update completed successfully',
-                'output' => esc_html($output_trimmed)
+                'reply' => trim($data['choices'][0]['message']['content'])
             ));
         } else {
-            wp_send_json_error(array(
-                'message' => 'Git pull completed but may have encountered issues',
-                'output' => esc_html($output_trimmed)
-            ));
+            wp_send_json_error(array('message' => 'Unexpected response format from OpenAI API'));
         }
     }
     
@@ -544,7 +801,7 @@ class ESIM_Chat {
                     <div id="esim-chat-widget">
                         <div class="esim-chat-header">
                             <h3 data-translate="title"><?php echo esc_html($translations['title']); ?></h3>
-                            <button id="esim-chat-close" class="esim-chat-close-btn" aria-label="<?php echo esc_attr($translations['close_chat']); ?>">×</button>
+                            <button id="esim-chat-close" class="esim-chat-close-btn" aria-label="<?php echo esc_attr($translations['close_chat']); ?>"></button>
                         </div>
                         <div id="esim-chat-messages" class="esim-chat-messages"></div>
                         <div class="esim-chat-input-area">
@@ -638,6 +895,9 @@ class ESIM_Chat {
         // Добавляем текущее сообщение
         $messages[] = array('role' => 'user', 'content' => $message);
         
+        // Get selected model
+        $model = get_option('esim_chat_openai_model', 'gpt-4o-mini');
+        
         // Отправляем запрос к OpenAI
         $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
             'timeout' => 30,
@@ -646,7 +906,7 @@ class ESIM_Chat {
                 'Authorization' => 'Bearer ' . $api_key
             ),
             'body' => json_encode(array(
-                'model' => 'gpt-4o-mini',
+                'model' => $model,
                 'messages' => $messages,
                 'max_tokens' => 500,
                 'temperature' => 0.7
@@ -694,6 +954,10 @@ class ESIM_Chat {
             "Your specialization: eSIM technologies, connection, installation, and troubleshooting.\n\n" .
             "CRITICALLY IMPORTANT RULES:\n" .
             "- Answer ONLY questions related to eSIM. If a question is about eSIM in any way, you MUST provide a helpful answer.\n" .
+            "- APN (Access Point Name) questions are ALWAYS considered eSIM-related. APN configuration is essential for eSIM connectivity and network access.\n" .
+            "- Questions about APN settings, APN for specific countries/operators, APN configuration for eSIM, APN troubleshooting - all are eSIM-related questions.\n" .
+            "- IP route questions are ALWAYS considered eSIM-related. IP route configuration is essential for eSIM network routing and connectivity.\n" .
+            "- Questions about IP route settings, IP route for specific countries/operators, IP route configuration for eSIM, IP route troubleshooting - all are eSIM-related questions.\n" .
             "- If a user asks a question that is NOT related to eSIM, politely decline and redirect them. " .
             "Say something like: \"I'm an eSIM consultant and can only help with eSIM-related questions. " .
             "How can I help you with eSIM?\" or \"I specialize in eSIM technology. Do you have any questions about eSIM?\"\n" .
@@ -707,6 +971,10 @@ class ESIM_Chat {
             "- eSIM activation and deactivation\n" .
             "- Configuration on iOS and Android\n" .
             "- Troubleshooting (activation errors, no network, APN issues, roaming)\n" .
+            "- APN configuration and settings (APN is essential for eSIM network connectivity)\n" .
+            "- APN for different countries and operators\n" .
+            "- IP route configuration and settings (IP route is essential for eSIM network routing)\n" .
+            "- IP route for different countries and operators\n" .
             "- Device and operator compatibility\n" .
             "- eSIM pricing, plans, and packages\n" .
             "- eSIM for travel and roaming\n" .
@@ -762,6 +1030,47 @@ class ESIM_Chat {
                 $prompt .= "Follow these instructions when responding to relevant topics:\n";
                 $prompt .= $scenarios_text . "\n";
                 $prompt .= "Use these scenarios as a guide, but adapt responses to the user's specific situation.\n";
+            }
+        }
+        
+        // Add APN data if it is set
+        $apn_data = get_option('esim_chat_apn_data', '');
+        if (!empty($apn_data)) {
+            $apn_text = strip_tags($apn_data); // Remove HTML tags
+            $apn_text = trim($apn_text);
+            if (!empty($apn_text)) {
+                $prompt .= "\n\nAPN INFORMATION DATABASE:\n";
+                $prompt .= "Use the following APN information when answering questions about APN settings:\n";
+                $prompt .= $apn_text . "\n";
+                $prompt .= "When a user asks about APN for a specific country or operator, check this database first and provide the exact APN name if available.\n";
+            }
+        }
+        
+        // Add IP route data if it is set
+        $ip_route_data = get_option('esim_chat_ip_route_data', '');
+        if (!empty($ip_route_data)) {
+            $ip_route_text = strip_tags($ip_route_data); // Remove HTML tags
+            $ip_route_text = trim($ip_route_text);
+            if (!empty($ip_route_text)) {
+                $prompt .= "\n\nIP ROUTE INFORMATION DATABASE:\n";
+                $prompt .= "Use the following IP route information when answering questions about IP route settings:\n";
+                $prompt .= $ip_route_text . "\n";
+                $prompt .= "When a user asks about IP route for a specific country or operator, check this database first and provide the exact IP route if available.\n";
+            }
+        }
+        
+        // Add Q&A pairs if they are set
+        $qa_data = get_option('esim_chat_qa_data', '');
+        if (!empty($qa_data)) {
+            $qa_text = strip_tags($qa_data); // Remove HTML tags
+            $qa_text = trim($qa_text);
+            if (!empty($qa_text)) {
+                $prompt .= "\n\nQUESTION & ANSWER DATABASE:\n";
+                $prompt .= "The following are predefined question and answer pairs. When a user asks a question that matches or is similar to any of these questions, use the corresponding answer as a reference:\n";
+                $prompt .= $qa_text . "\n";
+                $prompt .= "IMPORTANT: When a user's question matches or is very similar to a question in this database, prioritize using the provided answer. " .
+                    "You can adapt the answer slightly to match the user's specific wording or context, but keep the core information from the database answer. " .
+                    "If the user's question doesn't match any question in this database, answer normally based on your eSIM knowledge.\n";
             }
         }
         
