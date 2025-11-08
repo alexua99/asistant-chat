@@ -66,15 +66,12 @@
         // Отправка сообщения
         function sendMessage() {
             const text = input.value.trim();
-            const order = container.querySelector('#esim-chat-order')?.value.trim() || '';
             
-            if (!text && !order) return;
+            if (!text) return;
             if (isProcessing) return;
             
-            const messageText = text || 'start';
-            if (text) {
-                addMessage(text, 'user');
-            }
+            const messageText = text;
+            addMessage(text, 'user');
             
             input.value = '';
             sendBtn.disabled = true;
@@ -95,8 +92,7 @@
                     },
                     body: JSON.stringify({
                         message: messageText,
-                        history: chatHistory,
-                        order: order || undefined
+                        history: chatHistory
                     })
                 }).then(response => response.json());
             } else {
@@ -105,7 +101,6 @@
                 formData.append('action', esimChatConfig.action);
                 formData.append('nonce', esimChatConfig.nonce);
                 formData.append('message', messageText);
-                formData.append('order', order);
                 formData.append('history', JSON.stringify(chatHistory));
                 
                 requestPromise = fetch(esimChatConfig.ajaxUrl, {

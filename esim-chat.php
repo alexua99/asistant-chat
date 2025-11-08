@@ -40,6 +40,7 @@ class ESIM_Chat {
         add_action('wp_footer', array($this, 'render_floating_button'));
         add_action('wp_ajax_esim_chat_send', array($this, 'handle_chat_request'));
         add_action('wp_ajax_nopriv_esim_chat_send', array($this, 'handle_chat_request'));
+        add_action('wp_ajax_esim_chat_git_update', array($this, 'handle_git_update'));
     }
     
     public function init() {
@@ -298,8 +299,125 @@ class ESIM_Chat {
             <code>&lt;?php echo do_shortcode('[esim_chat]'); ?&gt;</code>
             
             <p><strong>Note:</strong> The shortcode will work regardless of the selected display type, but the floating button will only show when the corresponding type is selected.</p>
+            
+            <hr>
+            
+            <h2>Update from Git</h2>
+            <p>Update the plugin from the Git repository. This will run <code>git pull</code> in the plugin directory.</p>
+            <button type="button" id="esim-chat-git-update-btn" class="button button-secondary">
+                <span class="dashicons dashicons-update" style="vertical-align: middle;"></span> Update from Git
+            </button>
+            <span id="esim-chat-git-update-status" style="margin-left: 10px;"></span>
+            
+            <script>
+            jQuery(document).ready(function($) {
+                $('#esim-chat-git-update-btn').on('click', function() {
+                    var $btn = $(this);
+                    var $status = $('#esim-chat-git-update-status');
+                    
+                    $btn.prop('disabled', true).html('<span class="dashicons dashicons-update" style="vertical-align: middle; animation: spin 1s linear infinite;"></span> Updating...');
+                    $status.html('');
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        type: 'POST',
+                        data: {
+                            action: 'esim_chat_git_update',
+                            nonce: '<?php echo wp_create_nonce('esim_chat_git_update'); ?>'
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                $status.html('<span style="color: #46b450;">✓ ' + $('<div>').text(response.data.message || 'Updated successfully!').html() + '</span>');
+                                if (response.data.output) {
+                                    $status.append('<pre style="background: #f0f0f0; padding: 10px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-size: 12px;">' + $('<div>').text(response.data.output).html() + '</pre>');
+                                }
+                            } else {
+                                $status.html('<span style="color: #dc3232;">✗ ' + $('<div>').text(response.data.message || 'Update failed!').html() + '</span>');
+                                if (response.data.output) {
+                                    $status.append('<pre style="background: #f0f0f0; padding: 10px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-size: 12px; color: #dc3232;">' + $('<div>').text(response.data.output).html() + '</pre>');
+                                }
+                            }
+                            $btn.prop('disabled', false).html('<span class="dashicons dashicons-update" style="vertical-align: middle;"></span> Update from Git');
+                        },
+                        error: function() {
+                            $status.html('<span style="color: #dc3232;">✗ Error: Could not connect to server</span>');
+                            $btn.prop('disabled', false).html('<span class="dashicons dashicons-update" style="vertical-align: middle;"></span> Update from Git');
+                        }
+                    });
+                });
+            });
+            </script>
+            <style>
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+            </style>
         </div>
         <?php
+    }
+    
+    public function handle_git_update() {
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
+        }
+        
+        // Verify nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'esim_chat_git_update')) {
+            wp_send_json_error(array('message' => 'Security check failed'));
+            return;
+        }
+        
+        // Get plugin directory
+        $plugin_dir = dirname(__FILE__);
+        
+        // Check if .git directory exists
+        if (!is_dir($plugin_dir . '/.git')) {
+            wp_send_json_error(array('message' => 'Git repository not found in plugin directory'));
+            return;
+        }
+        
+        // Check if git command is available
+        $git_check = shell_exec('which git 2>&1');
+        if (empty($git_check) || strpos($git_check, 'not found') !== false) {
+            wp_send_json_error(array('message' => 'Git command not found. Please install Git on your server.'));
+            return;
+        }
+        
+        // Change to plugin directory and run git pull
+        $command = 'cd ' . escapeshellarg($plugin_dir) . ' && git pull 2>&1';
+        
+        // Execute git pull
+        $output = shell_exec($command);
+        
+        if ($output === null) {
+            wp_send_json_error(array('message' => 'Failed to execute git pull command'));
+            return;
+        }
+        
+        // Check if update was successful
+        $output_trimmed = trim($output);
+        $is_success = (
+            strpos($output_trimmed, 'Already up to date') !== false ||
+            strpos($output_trimmed, 'Updating') !== false ||
+            strpos($output_trimmed, 'Fast-forward') !== false ||
+            strpos($output_trimmed, 'Merge made') !== false ||
+            preg_match('/\d+ file[s]? changed/', $output_trimmed)
+        );
+        
+        if ($is_success) {
+            wp_send_json_success(array(
+                'message' => 'Update completed successfully',
+                'output' => esc_html($output_trimmed)
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => 'Git pull completed but may have encountered issues',
+                'output' => esc_html($output_trimmed)
+            ));
+        }
     }
     
     private function get_translations($lang = 'en') {
@@ -387,9 +505,6 @@ class ESIM_Chat {
                 </div>
                 <div id="esim-chat-messages" class="esim-chat-messages"></div>
                 <div class="esim-chat-input-area">
-                    <div class="esim-chat-fields">
-                        <input type="text" id="esim-chat-order" data-translate-placeholder="order_placeholder" placeholder="<?php echo esc_attr($translations['order_placeholder']); ?>" />
-                    </div>
                     <div class="esim-chat-input-wrapper">
                         <input type="text" id="esim-chat-input" data-translate-placeholder="input_placeholder" placeholder="<?php echo esc_attr($translations['input_placeholder']); ?>" />
                         <button id="esim-chat-send" class="esim-chat-send-btn" data-translate="send_button"><?php echo esc_html($translations['send_button']); ?></button>
@@ -433,9 +548,6 @@ class ESIM_Chat {
                         </div>
                         <div id="esim-chat-messages" class="esim-chat-messages"></div>
                         <div class="esim-chat-input-area">
-                            <div class="esim-chat-fields">
-                                <input type="text" id="esim-chat-order" data-translate-placeholder="order_placeholder" placeholder="<?php echo esc_attr($translations['order_placeholder']); ?>" />
-                            </div>
                             <div class="esim-chat-input-wrapper">
                                 <input type="text" id="esim-chat-input" data-translate-placeholder="input_placeholder" placeholder="<?php echo esc_attr($translations['input_placeholder']); ?>" />
                                 <button id="esim-chat-send" class="esim-chat-send-btn" data-translate="send_button"><?php echo esc_html($translations['send_button']); ?></button>
@@ -463,7 +575,6 @@ class ESIM_Chat {
     private function handle_external_server_request() {
         $api_url = get_option('esim_chat_api_url', 'http://localhost:3000');
         $message = sanitize_text_field($_POST['message'] ?? '');
-        $order = sanitize_text_field($_POST['order'] ?? '');
         $history = isset($_POST['history']) ? json_decode(stripslashes($_POST['history']), true) : array();
         
         $response = wp_remote_post($api_url . '/chat', array(
@@ -471,7 +582,6 @@ class ESIM_Chat {
             'headers' => array('Content-Type' => 'application/json'),
             'body' => json_encode(array(
                 'message' => $message,
-                'order' => $order ?: null,
                 'history' => $history
             ))
         ));
@@ -500,14 +610,13 @@ class ESIM_Chat {
         }
         
         $message = sanitize_text_field($_POST['message'] ?? '');
-        $order = sanitize_text_field($_POST['order'] ?? '');
         $history = isset($_POST['history']) ? json_decode(stripslashes($_POST['history']), true) : array();
         
         // Получаем IP пользователя для определения страны
         $user_ip = $this->get_user_ip();
         
         // Формируем системный промпт
-        $system_prompt = $this->get_system_prompt($user_ip, $order);
+        $system_prompt = $this->get_system_prompt($user_ip);
         
         // Формируем сообщения для OpenAI
         $messages = array(
@@ -577,7 +686,7 @@ class ESIM_Chat {
         return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
     }
     
-    private function get_system_prompt($user_ip, $order) {
+    private function get_system_prompt($user_ip) {
         $scenarios = get_option('esim_chat_response_scenarios', '');
         $response_length = get_option('esim_chat_response_length', 'brief');
         
@@ -654,12 +763,6 @@ class ESIM_Chat {
                 $prompt .= $scenarios_text . "\n";
                 $prompt .= "Use these scenarios as a guide, but adapt responses to the user's specific situation.\n";
             }
-        }
-        
-        // Add context if there is order data
-        if ($order) {
-            $prompt .= "\n\nAdditional user information:";
-            $prompt .= "\n- Order number: " . $order;
         }
         
         return $prompt;
