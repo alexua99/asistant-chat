@@ -65,11 +65,20 @@ class ESIM_Chat {
         register_setting('esim_chat_settings', 'esim_chat_enabled');
         register_setting('esim_chat_settings', 'esim_chat_display_type');
         register_setting('esim_chat_settings', 'esim_chat_language');
+        register_setting('esim_chat_settings', 'esim_chat_response_scenarios');
+        register_setting('esim_chat_settings', 'esim_chat_response_length');
         
         add_settings_section(
             'esim_chat_main_section',
             'Main Settings',
             null,
+            'esim-chat'
+        );
+        
+        add_settings_section(
+            'esim_chat_scenarios_section',
+            'Response Scenarios',
+            array($this, 'render_scenarios_section_description'),
             'esim-chat'
         );
         
@@ -120,6 +129,60 @@ class ESIM_Chat {
             'esim-chat',
             'esim_chat_main_section'
         );
+        
+        add_settings_field(
+            'esim_chat_response_length',
+            'Response Length',
+            array($this, 'render_response_length_field'),
+            'esim-chat',
+            'esim_chat_main_section'
+        );
+        
+        add_settings_field(
+            'esim_chat_response_scenarios',
+            'Response Scenarios',
+            array($this, 'render_scenarios_field'),
+            'esim-chat',
+            'esim_chat_scenarios_section'
+        );
+    }
+    
+    public function render_scenarios_section_description() {
+        echo '<p>Define custom response scenarios that the AI should follow. Use this to provide specific instructions, examples, or guidelines for how the AI should respond to certain topics or questions.</p>';
+    }
+    
+    public function render_scenarios_field() {
+        $value = get_option('esim_chat_response_scenarios', '');
+        $editor_id = 'esim_chat_response_scenarios';
+        
+        wp_editor(
+            $value,
+            $editor_id,
+            array(
+                'textarea_name' => 'esim_chat_response_scenarios',
+                'textarea_rows' => 15,
+                'media_buttons' => false,
+                'teeny' => true,
+                'tinymce' => array(
+                    'toolbar1' => 'bold,italic,underline,bullist,numlist,link,unlink',
+                    'toolbar2' => '',
+                ),
+            )
+        );
+        ?>
+        <p class="description">
+            <strong>How to use scenarios:</strong><br>
+            • Define specific instructions for how the AI should respond to certain topics<br>
+            • Provide examples of good responses<br>
+            • Set guidelines for handling specific situations<br>
+            • Use format: <code>Topic/Keyword: Instructions or example response</code><br><br>
+            <strong>Example:</strong><br>
+            <code>
+            Order Status: When users ask about order status, always ask for their order number first, then provide helpful information about checking their order.<br><br>
+            Technical Support: For technical issues, provide step-by-step instructions and ask clarifying questions if needed.
+            </code>
+        </p>
+        <?php
     }
     
     public function render_language_field() {
@@ -173,6 +236,17 @@ class ESIM_Chat {
             <option value="shortcode" <?php selected($value, 'shortcode'); ?>>Shortcode Only [esim_chat]</option>
         </select>
         <p class="description">Choose how to display the chat on your site: floating button will appear on all pages, shortcode - only where you place it</p>
+        <?php
+    }
+    
+    public function render_response_length_field() {
+        $value = get_option('esim_chat_response_length', 'brief');
+        ?>
+        <select name="esim_chat_response_length" id="esim_chat_response_length">
+            <option value="brief" <?php selected($value, 'brief'); ?>>Brief (recommended)</option>
+            <option value="detailed" <?php selected($value, 'detailed'); ?>>Detailed</option>
+        </select>
+        <p class="description">Choose the length of AI responses: Brief - very short and concise answers (1-2 sentences), Detailed - longer answers with more information (2-3 sentences or short paragraph)</p>
         <?php
     }
     
@@ -232,36 +306,30 @@ class ESIM_Chat {
         $translations = array(
             'en' => array(
                 'title' => 'eSIM Consultant',
-                'email_placeholder' => 'Email (optional)',
                 'order_placeholder' => 'Order number (optional)',
-                'iccid_placeholder' => 'ICCID (optional)',
                 'input_placeholder' => 'Enter your question...',
                 'send_button' => 'Send',
                 'open_chat' => 'Open chat',
                 'close_chat' => 'Close chat',
-                'welcome_message' => 'Hello! I am an eSIM consultant. I can help with eSIM installation, setup, tell you about operators and devices. How can I help?'
+                'welcome_message' => 'Hello! I\'m an eSIM consultant. How can I help?'
             ),
             'uk' => array(
                 'title' => 'eSIM Консультант',
-                'email_placeholder' => 'Email (опціонально)',
                 'order_placeholder' => 'Номер замовлення (опціонально)',
-                'iccid_placeholder' => 'ICCID (опціонально)',
                 'input_placeholder' => 'Введіть ваше питання...',
                 'send_button' => 'Відправити',
                 'open_chat' => 'Відкрити чат',
                 'close_chat' => 'Закрити чат',
-                'welcome_message' => 'Привіт! Я консультант з eSIM. Можу допомогти з встановленням, налаштуванням eSIM, розповісти про операторів та пристрої. Чим можу допомогти?'
+                'welcome_message' => 'Привіт! Я консультант з eSIM. Чим можу допомогти?'
             ),
             'ru' => array(
                 'title' => 'eSIM Консультант',
-                'email_placeholder' => 'Email (опционально)',
                 'order_placeholder' => 'Номер заказа (опционально)',
-                'iccid_placeholder' => 'ICCID (опционально)',
                 'input_placeholder' => 'Введите ваш вопрос...',
                 'send_button' => 'Отправить',
                 'open_chat' => 'Открыть чат',
                 'close_chat' => 'Закрыть чат',
-                'welcome_message' => 'Привет! Я консультант по eSIM. Могу помочь с установкой, настройкой eSIM, рассказать про операторов и устройства. Чем могу помочь?'
+                'welcome_message' => 'Привет! Я консультант по eSIM. Чем могу помочь?'
             )
         );
         
@@ -274,7 +342,11 @@ class ESIM_Chat {
         }
         
         wp_enqueue_style('esim-chat-style', ESIM_CHAT_PLUGIN_URL . 'assets/css/esim-chat.css', array(), ESIM_CHAT_VERSION);
-        wp_enqueue_script('esim-chat-script', ESIM_CHAT_PLUGIN_URL . 'assets/js/esim-chat.js', array(), ESIM_CHAT_VERSION, true);
+        
+        // Enqueue marked.js for Markdown parsing
+        wp_enqueue_script('marked', 'https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js', array(), '11.1.1', false);
+        
+        wp_enqueue_script('esim-chat-script', ESIM_CHAT_PLUGIN_URL . 'assets/js/esim-chat.js', array('marked'), ESIM_CHAT_VERSION, true);
         
         $mode = get_option('esim_chat_mode', 'openai');
         $api_url = get_option('esim_chat_api_url', 'http://localhost:3000');
@@ -316,9 +388,7 @@ class ESIM_Chat {
                 <div id="esim-chat-messages" class="esim-chat-messages"></div>
                 <div class="esim-chat-input-area">
                     <div class="esim-chat-fields">
-                        <input type="email" id="esim-chat-email" data-translate-placeholder="email_placeholder" placeholder="<?php echo esc_attr($translations['email_placeholder']); ?>" />
                         <input type="text" id="esim-chat-order" data-translate-placeholder="order_placeholder" placeholder="<?php echo esc_attr($translations['order_placeholder']); ?>" />
-                        <input type="text" id="esim-chat-iccid" data-translate-placeholder="iccid_placeholder" placeholder="<?php echo esc_attr($translations['iccid_placeholder']); ?>" />
                     </div>
                     <div class="esim-chat-input-wrapper">
                         <input type="text" id="esim-chat-input" data-translate-placeholder="input_placeholder" placeholder="<?php echo esc_attr($translations['input_placeholder']); ?>" />
@@ -364,9 +434,7 @@ class ESIM_Chat {
                         <div id="esim-chat-messages" class="esim-chat-messages"></div>
                         <div class="esim-chat-input-area">
                             <div class="esim-chat-fields">
-                                <input type="email" id="esim-chat-email" data-translate-placeholder="email_placeholder" placeholder="<?php echo esc_attr($translations['email_placeholder']); ?>" />
                                 <input type="text" id="esim-chat-order" data-translate-placeholder="order_placeholder" placeholder="<?php echo esc_attr($translations['order_placeholder']); ?>" />
-                                <input type="text" id="esim-chat-iccid" data-translate-placeholder="iccid_placeholder" placeholder="<?php echo esc_attr($translations['iccid_placeholder']); ?>" />
                             </div>
                             <div class="esim-chat-input-wrapper">
                                 <input type="text" id="esim-chat-input" data-translate-placeholder="input_placeholder" placeholder="<?php echo esc_attr($translations['input_placeholder']); ?>" />
@@ -395,9 +463,7 @@ class ESIM_Chat {
     private function handle_external_server_request() {
         $api_url = get_option('esim_chat_api_url', 'http://localhost:3000');
         $message = sanitize_text_field($_POST['message'] ?? '');
-        $email = sanitize_email($_POST['email'] ?? '');
         $order = sanitize_text_field($_POST['order'] ?? '');
-        $iccid = sanitize_text_field($_POST['iccid'] ?? '');
         $history = isset($_POST['history']) ? json_decode(stripslashes($_POST['history']), true) : array();
         
         $response = wp_remote_post($api_url . '/chat', array(
@@ -405,15 +471,13 @@ class ESIM_Chat {
             'headers' => array('Content-Type' => 'application/json'),
             'body' => json_encode(array(
                 'message' => $message,
-                'email' => $email ?: null,
                 'order' => $order ?: null,
-                'iccid' => $iccid ?: null,
                 'history' => $history
             ))
         ));
         
         if (is_wp_error($response)) {
-            wp_send_json_error(array('message' => 'Ошибка соединения с сервером'));
+            wp_send_json_error(array('message' => 'Server connection error'));
             return;
         }
         
@@ -423,7 +487,7 @@ class ESIM_Chat {
         if ($data) {
             wp_send_json_success($data);
         } else {
-            wp_send_json_error(array('message' => 'Неверный ответ от сервера'));
+            wp_send_json_error(array('message' => 'Invalid server response'));
         }
     }
     
@@ -431,21 +495,19 @@ class ESIM_Chat {
         $api_key = get_option('esim_chat_openai_key', '');
         
         if (empty($api_key)) {
-            wp_send_json_error(array('message' => 'OpenAI API ключ не настроен. Пожалуйста, укажите его в настройках плагина.'));
+            wp_send_json_error(array('message' => 'OpenAI API key is not configured. Please set it in the plugin settings.'));
             return;
         }
         
         $message = sanitize_text_field($_POST['message'] ?? '');
-        $email = sanitize_email($_POST['email'] ?? '');
         $order = sanitize_text_field($_POST['order'] ?? '');
-        $iccid = sanitize_text_field($_POST['iccid'] ?? '');
         $history = isset($_POST['history']) ? json_decode(stripslashes($_POST['history']), true) : array();
         
         // Получаем IP пользователя для определения страны
         $user_ip = $this->get_user_ip();
         
         // Формируем системный промпт
-        $system_prompt = $this->get_system_prompt($user_ip, $email, $order, $iccid);
+        $system_prompt = $this->get_system_prompt($user_ip, $order);
         
         // Формируем сообщения для OpenAI
         $messages = array(
@@ -483,7 +545,7 @@ class ESIM_Chat {
         ));
         
         if (is_wp_error($response)) {
-            wp_send_json_error(array('message' => 'Ошибка соединения с OpenAI API'));
+            wp_send_json_error(array('message' => 'OpenAI API connection error'));
             return;
         }
         
@@ -495,8 +557,8 @@ class ESIM_Chat {
                 'reply' => trim($data['choices'][0]['message']['content'])
             ));
         } else {
-            $error_msg = isset($data['error']['message']) ? $data['error']['message'] : 'Неизвестная ошибка';
-            wp_send_json_error(array('message' => 'Ошибка OpenAI: ' . $error_msg));
+            $error_msg = isset($data['error']['message']) ? $data['error']['message'] : 'Unknown error';
+            wp_send_json_error(array('message' => 'OpenAI error: ' . $error_msg));
         }
     }
     
@@ -515,36 +577,74 @@ class ESIM_Chat {
         return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
     }
     
-    private function get_system_prompt($user_ip, $email, $order, $iccid) {
-        $prompt = "Ты — дружелюбный и профессиональный консультант по eSIM. " .
-            "Твоя специализация: eSIM технологии, подключение, установка и устранение неполадок.\n\n" .
-            "ОСНОВНЫЕ ТЕМЫ, на которые отвечай:\n" .
-            "- Поддерживаемые устройства (iPhone, Samsung, Google Pixel и др.)\n" .
-            "- Операторы и тарифные планы eSIM\n" .
-            "- Покупка и активация eSIM\n" .
-            "- Установка eSIM через QR-код\n" .
-            "- Перенос eSIM между устройствами\n" .
-            "- Активация и деактивация eSIM\n" .
-            "- Настройка на iOS и Android\n" .
-            "- Устранение неполадок (ошибки активации, нет сети, проблемы с APN, роуминг)\n" .
-            "- Совместимость устройств и операторов\n" .
-            "- ВОПРОСЫ ПРО ОПЕРАТОРОВ: Если пользователь спрашивает про операторов в какой-либо стране, расскажи подробно про основных операторов этой страны, какие из них поддерживают eSIM, их особенности и тарифы. Можешь давать развернутые ответы, если пользователь интересуется деталями.\n\n" .
-            "СТИЛЬ ОБЩЕНИЯ:\n" .
-            "- КРИТИЧЕСКИ ВАЖНО: ВСЕГДА отвечай на ОДНОМ И ТОМ ЖЕ ЯЗЫКЕ на протяжении ВСЕГО диалога\n" .
-            "- Язык диалога определяется из первых сообщений пользователя и НЕ МЕНЯЕТСЯ\n" .
-            "- Поддерживай ВСЕ языки мира (400+ языков)\n" .
-            "- НИКОГДА не переключай язык в середине диалога\n" .
-            "- БУДЬ ЕСТЕСТВЕННЫМ: Общайся как настоящий человек, а не робот\n" .
-            "- ДЛИНА ОТВЕТА: Для вопросов про eSIM, операторов, устройства и технологии - можешь давать развернутые, подробные ответы. Отвечай столько, сколько нужно для полного раскрытия темы. Для простых вопросов или вопросов не по теме - отвечай кратко (1-2 предложения).\n" .
-            "- Дружелюбный тон, но без излишней формальности\n" .
-            "- ВАЖНО: Никогда не смешивай языки в одном ответе";
+    private function get_system_prompt($user_ip, $order) {
+        $scenarios = get_option('esim_chat_response_scenarios', '');
+        $response_length = get_option('esim_chat_response_length', 'brief');
         
-        // Добавляем контекст, если есть данные о заказе
-        if ($email || $order || $iccid) {
-            $prompt .= "\n\nДополнительная информация о пользователе:";
-            if ($email) $prompt .= "\n- Email: " . $email;
-            if ($order) $prompt .= "\n- Номер заказа: " . $order;
-            if ($iccid) $prompt .= "\n- ICCID: " . $iccid;
+        $prompt = "You are a friendly and professional eSIM consultant. " .
+            "Your specialization: eSIM technologies, connection, installation, and troubleshooting.\n\n" .
+            "MAIN TOPICS you should answer:\n" .
+            "- Supported devices (iPhone, Samsung, Google Pixel, etc.)\n" .
+            "- Operators and eSIM plans\n" .
+            "- eSIM purchase and activation\n" .
+            "- eSIM installation via QR code\n" .
+            "- Transferring eSIM between devices\n" .
+            "- eSIM activation and deactivation\n" .
+            "- Configuration on iOS and Android\n" .
+            "- Troubleshooting (activation errors, no network, APN issues, roaming)\n" .
+            "- Device and operator compatibility\n" .
+            "- OPERATOR QUESTIONS: If the user asks about operators in any country, provide brief information about the main operators that support eSIM. Keep it concise - just the essential facts.\n\n" .
+            "COMMUNICATION STYLE:\n" .
+            "- LANGUAGE: By default, respond in the same language the user writes in\n" .
+            "- Support ALL languages of the world (400+ languages)\n" .
+            "- LANGUAGE SWITCHING: If the user EXPLICITLY asks to switch languages (e.g., \"speak English\", \"switch to English\", \"говори по-английски\", \"speak Ukrainian\", \"English please\", \"по-русски\"), IMMEDIATELY switch to the requested language and continue the conversation in it\n" .
+            "- After switching languages at the user's request, continue using the new language until the next explicit request to change language\n" .
+            "- If the user asks to change language, confirm the change briefly (e.g., \"Sure, I'll speak English now\" or \"Of course, I'll speak Ukrainian now\") and immediately switch to the new language\n" .
+            "- BE NATURAL: Communicate like a real person, not a robot\n" .
+            "- RESPONSE LENGTH (CRITICALLY IMPORTANT!): " . ($response_length === 'brief' ? 
+                "Answer EXTREMELY BRIEFLY. Maximum 1-2 sentences. Be concise, direct, and to the point. No unnecessary words or explanations. Get straight to the answer." : 
+                "Answer CONCISELY. Maximum 2-3 sentences for simple questions, up to 1 short paragraph for complex ones. Be brief and direct. Avoid long explanations unless absolutely necessary.") . "\n" .
+            "- Friendly tone, but without excessive formality\n" .
+            "- IMPORTANT: Never mix languages in one response - use only one language at a time\n\n" .
+            "RESPONSE FORMATTING (CRITICALLY IMPORTANT!):\n" .
+            "- Use simple chat-friendly formatting - NO headers (##, ###), NO horizontal lines (---), NO blockquotes\n" .
+            "- Use double line breaks (empty line) between paragraphs for better readability\n" .
+            "- For lists ALWAYS use bullet points (- or •)\n" .
+            "- For step-by-step instructions use numbered lists (1., 2., 3.)\n" .
+            "- Highlight **bold text** for key information, important points, device names, operators\n" .
+            "- Use *italic* for emphasis on individual words or phrases\n" .
+            "- Use `code` for command names, settings, technical terms\n" .
+            "- Use [link text](url) for links when needed\n" .
+            "- Structure responses with clear paragraphs separated by empty lines\n" .
+            "- Use lists to enumerate advantages, features, requirements, steps\n" .
+            "- Break complex information into logical blocks with empty lines between them\n" .
+            "- Highlight important warnings or advice in bold text\n" .
+            "- Make responses visually appealing and easily scannable\n" .
+            "- Example of good format:\n" .
+            "  **Important point:** Main response text with explanation.\n" .
+            "  \n" .
+            "  - Point 1\n" .
+            "  - Point 2\n" .
+            "  - Point 3\n" .
+            "  \n" .
+            "  Additional information with `technical terms` and [links](url) when needed.";
+        
+        // Add custom response scenarios if they are set
+        if (!empty($scenarios)) {
+            $scenarios_text = strip_tags($scenarios); // Remove HTML tags
+            $scenarios_text = trim($scenarios_text);
+            if (!empty($scenarios_text)) {
+                $prompt .= "\n\nADDITIONAL SCENARIOS AND INSTRUCTIONS:\n";
+                $prompt .= "Follow these instructions when responding to relevant topics:\n";
+                $prompt .= $scenarios_text . "\n";
+                $prompt .= "Use these scenarios as a guide, but adapt responses to the user's specific situation.\n";
+            }
+        }
+        
+        // Add context if there is order data
+        if ($order) {
+            $prompt .= "\n\nAdditional user information:";
+            $prompt .= "\n- Order number: " . $order;
         }
         
         return $prompt;
