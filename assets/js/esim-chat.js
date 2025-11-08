@@ -4,6 +4,90 @@
     let chatHistory = [];
     let isProcessing = false;
     let currentChatContainer = null;
+    const STORAGE_KEY = 'esim_chat_history';
+    const MAX_HISTORY_ITEMS = 50; // Maximum number of messages to keep in history
+    
+    // Save chat history to localStorage with limit
+    function saveChatHistory() {
+        try {
+            // Limit history to last MAX_HISTORY_ITEMS messages
+            let limitedHistory = chatHistory;
+            if (chatHistory.length > MAX_HISTORY_ITEMS) {
+                limitedHistory = chatHistory.slice(-MAX_HISTORY_ITEMS);
+                chatHistory = limitedHistory;
+            }
+            
+            // Also limit the size of data (approximately 1MB limit)
+            const dataString = JSON.stringify(limitedHistory);
+            const maxSize = 1024 * 1024; // 1MB
+            
+            if (dataString.length > maxSize) {
+                // Reduce history further if too large
+                let reducedHistory = limitedHistory;
+                while (JSON.stringify(reducedHistory).length > maxSize && reducedHistory.length > 0) {
+                    reducedHistory = reducedHistory.slice(1); // Remove oldest messages
+                }
+                chatHistory = reducedHistory;
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(reducedHistory));
+            } else {
+                localStorage.setItem(STORAGE_KEY, dataString);
+            }
+        } catch (e) {
+            // If quota exceeded, try to reduce history
+            if (e.name === 'QuotaExceededError') {
+                try {
+                    // Reduce to half and try again
+                    const reducedHistory = chatHistory.slice(-Math.floor(MAX_HISTORY_ITEMS / 2));
+                    chatHistory = reducedHistory;
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(reducedHistory));
+                } catch (e2) {
+                    console.warn('Failed to save chat history to localStorage (quota exceeded):', e2);
+                    // Clear old history if still failing
+                    try {
+                        localStorage.removeItem(STORAGE_KEY);
+                        chatHistory = [];
+                    } catch (e3) {
+                        console.warn('Failed to clear localStorage:', e3);
+                    }
+                }
+            } else {
+                console.warn('Failed to save chat history to localStorage:', e);
+            }
+        }
+    }
+    
+    // Load chat history from localStorage
+    function loadChatHistory() {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    // Limit loaded history to MAX_HISTORY_ITEMS
+                    if (parsed.length > MAX_HISTORY_ITEMS) {
+                        chatHistory = parsed.slice(-MAX_HISTORY_ITEMS);
+                        saveChatHistory(); // Save limited version
+                    } else {
+                        chatHistory = parsed;
+                    }
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load chat history from localStorage:', e);
+        }
+        return false;
+    }
+    
+    // Clear chat history from localStorage
+    function clearChatHistory() {
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+            chatHistory = [];
+        } catch (e) {
+            console.warn('Failed to clear chat history from localStorage:', e);
+        }
+    }
     
     // Инициализация плавающей кнопки и модального окна
     function initFloatingButton() {
@@ -56,7 +140,10 @@
         
         currentChatContainer = container;
         
-        const input = container.querySelector('#esim-chat-input');
+        // Load chat history from localStorage
+        loadChatHistory();
+        
+        const input = container.querySelector('#chat_bot') || container.querySelector('#esim-chat-input');
         const sendBtn = container.querySelector('#esim-chat-send');
         const toggleBtn = container.querySelector('#esim-chat-toggle');
         const widget = container.querySelector('#esim-chat-widget');
@@ -70,8 +157,11 @@
             if (!text) return;
             if (isProcessing) return;
             
+            // Ensure we have the latest history from localStorage
+            loadChatHistory();
+            
             const messageText = text;
-            addMessage(text, 'user');
+                addMessage(text, 'user');
             
             input.value = '';
             sendBtn.disabled = true;
@@ -92,7 +182,7 @@
                     },
                     body: JSON.stringify({
                         message: messageText,
-                        history: chatHistory
+                        history: chatHistory // AI will see the full conversation history
                     })
                 }).then(response => response.json());
             } else {
@@ -101,7 +191,7 @@
                 formData.append('action', esimChatConfig.action);
                 formData.append('nonce', esimChatConfig.nonce);
                 formData.append('message', messageText);
-                formData.append('history', JSON.stringify(chatHistory));
+                formData.append('history', JSON.stringify(chatHistory)); // AI will see the full conversation history
                 
                 requestPromise = fetch(esimChatConfig.ajaxUrl, {
                     method: 'POST',
@@ -137,6 +227,7 @@
                             role: 'assistant', 
                             content: responseData.reply + (responseData.followUp ? ('\n' + responseData.followUp) : '')
                         });
+                        saveChatHistory(); // Save to localStorage
                     } else {
                         addMessage('Error: No response from server', 'assistant', false);
                     }
@@ -162,6 +253,7 @@
                         role: 'assistant', 
                         content: data.reply + (data.followUp ? ('\n' + data.followUp) : '')
                     });
+                    saveChatHistory(); // Save to localStorage
                 }
                 // Error handling
                 else if (data.success === false) {
@@ -308,7 +400,7 @@
             } else {
                 // Format text for assistant messages
                 bubble.innerHTML = formatMessage(text);
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
         }
         
@@ -404,9 +496,9 @@
         const welcomeMessage = translations.welcome_message || 'Hello! I\'m an eSIM consultant. How can I help?';
         
         if (messagesContainer && messagesContainer.children.length === 0 && chatHistory.length === 0) {
-            setTimeout(() => {
+        setTimeout(() => {
                 addMessage(welcomeMessage, 'assistant', true);
-            }, 500);
+        }, 500);
         } else if (messagesContainer && messagesContainer.children.length === 0 && chatHistory.length > 0) {
             // Restore history from chatHistory (without typewriter for restored messages)
             chatHistory.forEach(msg => {
