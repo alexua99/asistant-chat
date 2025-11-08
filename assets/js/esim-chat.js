@@ -66,11 +66,9 @@
         // Отправка сообщения
         function sendMessage() {
             const text = input.value.trim();
-            const email = container.querySelector('#esim-chat-email')?.value.trim() || '';
             const order = container.querySelector('#esim-chat-order')?.value.trim() || '';
-            const iccid = container.querySelector('#esim-chat-iccid')?.value.trim() || '';
             
-            if (!text && !email && !order && !iccid) return;
+            if (!text && !order) return;
             if (isProcessing) return;
             
             const messageText = text || 'start';
@@ -98,9 +96,7 @@
                     body: JSON.stringify({
                         message: messageText,
                         history: chatHistory,
-                        email: email || undefined,
-                        order: order || undefined,
-                        iccid: iccid || undefined
+                        order: order || undefined
                     })
                 }).then(response => response.json());
             } else {
@@ -109,9 +105,7 @@
                 formData.append('action', esimChatConfig.action);
                 formData.append('nonce', esimChatConfig.nonce);
                 formData.append('message', messageText);
-                formData.append('email', email);
                 formData.append('order', order);
-                formData.append('iccid', iccid);
                 formData.append('history', JSON.stringify(chatHistory));
                 
                 requestPromise = fetch(esimChatConfig.ajaxUrl, {
@@ -129,12 +123,15 @@
                     const responseData = data.data;
                     
                     if (responseData.reply) {
-                        addMessage(responseData.reply, 'assistant');
+                        addMessage(responseData.reply, 'assistant', true);
                         
                         if (responseData.followUp) {
+                            // Wait for first message to finish typing before starting follow-up
+                            const firstMessageLength = responseData.reply.length;
+                            const delay = firstMessageLength * 15 + 500; // Calculate delay based on typing speed
                             setTimeout(() => {
-                                addMessage(responseData.followUp, 'assistant');
-                            }, 500);
+                                addMessage(responseData.followUp, 'assistant', true);
+                            }, delay);
                         }
                         
                         // Обновляем историю
@@ -146,17 +143,20 @@
                             content: responseData.reply + (responseData.followUp ? ('\n' + responseData.followUp) : '')
                         });
                     } else {
-                        addMessage('Ошибка: нет ответа от сервера', 'assistant');
+                        addMessage('Error: No response from server', 'assistant', false);
                     }
                 } 
                 // Обработка прямого ответа от внешнего сервера
                 else if (data.reply) {
-                    addMessage(data.reply, 'assistant');
+                    addMessage(data.reply, 'assistant', true);
                     
                     if (data.followUp) {
+                        // Wait for first message to finish typing before starting follow-up
+                        const firstMessageLength = data.reply.length;
+                        const delay = firstMessageLength * 15 + 500; // Calculate delay based on typing speed
                         setTimeout(() => {
-                            addMessage(data.followUp, 'assistant');
-                        }, 500);
+                            addMessage(data.followUp, 'assistant', true);
+                        }, delay);
                     }
                     
                     // Обновляем историю
@@ -168,18 +168,18 @@
                         content: data.reply + (data.followUp ? ('\n' + data.followUp) : '')
                     });
                 }
-                // Обработка ошибок
+                // Error handling
                 else if (data.success === false) {
-                    const errorMsg = data.data?.message || 'Произошла ошибка';
-                    addMessage('Ошибка: ' + errorMsg, 'assistant');
+                    const errorMsg = data.data?.message || 'An error occurred';
+                    addMessage('Error: ' + errorMsg, 'assistant', false);
                 } else {
-                    addMessage('Ошибка: нет ответа от сервера', 'assistant');
+                    addMessage('Error: No response from server', 'assistant', false);
                 }
             })
             .catch(error => {
                 hideTyping();
                 console.error('Chat error:', error);
-                addMessage('Ошибка соединения. Проверьте настройки плагина.', 'assistant');
+                addMessage('Connection error. Please check plugin settings.', 'assistant', false);
             })
             .finally(() => {
                 sendBtn.disabled = false;
@@ -188,8 +188,106 @@
             });
         }
         
-        // Добавление сообщения в чат
-        function addMessage(text, role) {
+        // Format text with Markdown using marked.js library
+        function formatMessage(text) {
+            if (!text) return '';
+            
+            // Check if marked.js is available
+            if (typeof marked !== 'undefined') {
+                try {
+                    // Configure marked options for better formatting
+                    marked.setOptions({
+                        breaks: true, // Convert \n to <br>
+                        gfm: true, // GitHub Flavored Markdown
+                        headerIds: false, // Disable header IDs
+                        mangle: false // Don't mangle email addresses
+                    });
+                    
+                    // Parse Markdown to HTML
+                    let html = marked.parse(text);
+                    
+                    // Additional cleanup and enhancements
+                    // Ensure proper spacing
+                    html = html.replace(/<p><\/p>/g, ''); // Remove empty paragraphs
+                    html = html.replace(/\n\n+/g, '\n'); // Clean up extra newlines
+                    
+                    return html;
+                } catch (e) {
+                    console.warn('Marked.js parsing error:', e);
+                    // Fallback to basic formatting if marked.js fails
+                    return formatMessageBasic(text);
+                }
+            } else {
+                // Fallback to basic formatting if marked.js is not loaded
+                return formatMessageBasic(text);
+            }
+        }
+        
+        // Basic formatting fallback (original implementation)
+        function formatMessageBasic(text) {
+            if (!text) return '';
+            
+            let html = text;
+            
+            // Format code blocks
+            html = html.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            // Format bold text
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+            
+            // Format italic text
+            html = html.replace(/([^*])\*([^*\n]+?)\*([^*])/g, '$1<em>$2</em>$3');
+            html = html.replace(/([^_])_([^_\n]+?)_([^_])/g, '$1<em>$2</em>$3');
+            
+            // Format headers
+            html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^##\s+(.+)$/gm, '<h4>$1</h4>');
+            
+            // Format horizontal rules
+            html = html.replace(/^[-*]{3,}$/gm, '<hr>');
+            
+            // Split by double line breaks
+            let paragraphs = html.split(/\n\n+/);
+            
+            paragraphs = paragraphs.map(para => {
+                para = para.trim();
+                if (!para) return '';
+                
+                if (para.startsWith('<h3>') || para.startsWith('<h4>') || para.startsWith('<hr>')) {
+                    return para;
+                }
+                
+                const numberedItems = para.match(/^\d+\.\s+(.+)$/gm);
+                if (numberedItems && numberedItems.length > 0) {
+                    para = para.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+                    para = para.replace(/(<li>.*?<\/li>(?:\s*<li>.*?<\/li>)*)/g, '<ol>$1</ol>');
+                    return para;
+                }
+                
+                const bulletItems = para.match(/^[-•*]\s+(.+)$/gm);
+                if (bulletItems && bulletItems.length > 0) {
+                    para = para.replace(/^[-•*]\s+(.+)$/gm, '<li>$1</li>');
+                    para = para.replace(/(<li>.*?<\/li>(?:\s*<li>.*?<\/li>)*)/g, '<ul>$1</ul>');
+                    return para;
+                }
+                
+                if (para.startsWith('>')) {
+                    para = para.replace(/^>\s*/gm, '');
+                    para = para.replace(/\n/g, '<br>');
+                    return '<blockquote>' + para + '</blockquote>';
+                }
+                
+                para = para.replace(/\n/g, '<br>');
+                return '<p>' + para + '</p>';
+            });
+            
+            return paragraphs.filter(p => p).join('');
+        }
+        
+        // Add message to chat with typewriter effect for assistant
+        function addMessage(text, role, useTypewriter = false) {
             const messagesContainer = container.querySelector('#esim-chat-messages');
             if (!messagesContainer) return;
             
@@ -198,11 +296,74 @@
             
             const bubble = document.createElement('div');
             bubble.className = 'esim-chat-message-bubble';
-            bubble.textContent = text;
             
             messageDiv.appendChild(bubble);
             messagesContainer.appendChild(messageDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // For user messages, display immediately
+            if (role === 'user') {
+                bubble.textContent = text;
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                return;
+            }
+            
+            // For assistant messages, use typewriter effect if enabled
+            if (role === 'assistant' && useTypewriter) {
+                typewriterEffect(bubble, text, messagesContainer);
+            } else {
+                // Format text for assistant messages
+                bubble.innerHTML = formatMessage(text);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+        }
+        
+        // Typewriter effect for smooth text display
+        function typewriterEffect(element, text, container) {
+            // First format the text to get final HTML structure
+            const formattedHTML = formatMessage(text);
+            
+            // Create temporary element to extract plain text
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = formattedHTML;
+            const plainText = tempDiv.textContent || tempDiv.innerText || '';
+            
+            // Store original HTML for final formatting
+            const originalHTML = formattedHTML;
+            
+            // Display text character by character, then apply formatting at the end
+            let charIndex = 0;
+            const speed = 20; // milliseconds per character (adjust for speed: lower = faster)
+            const minSpeed = 10;
+            const maxSpeed = 30;
+            
+            // Variable speed based on character type
+            function getCharSpeed(char) {
+                if (char === ' ' || char === '\n') return minSpeed;
+                if (/[.,!?;:]/.test(char)) return maxSpeed;
+                return speed;
+            }
+            
+            function typeNextChar() {
+                if (charIndex < plainText.length) {
+                    const currentText = plainText.substring(0, charIndex + 1);
+                    const currentChar = plainText[charIndex];
+                    
+                    // Display plain text first (will be formatted at the end)
+                    element.textContent = currentText;
+                    container.scrollTop = container.scrollHeight;
+                    
+                    charIndex++;
+                    const charSpeed = getCharSpeed(currentChar);
+                    setTimeout(typeNextChar, charSpeed);
+                } else {
+                    // When done typing, apply full formatting
+                    element.innerHTML = originalHTML;
+                    container.scrollTop = container.scrollHeight;
+                }
+            }
+            
+            // Start typing
+            typeNextChar();
         }
         
         // Показ индикатора печати
@@ -245,17 +406,17 @@
         // Welcome message only if chat is not initialized and history is empty
         const messagesContainer = container.querySelector('#esim-chat-messages');
         const translations = esimChatConfig.translations || {};
-        const welcomeMessage = translations.welcome_message || 'Hello! I am an eSIM consultant. I can help with eSIM installation, setup, tell you about operators and devices. How can I help?';
+        const welcomeMessage = translations.welcome_message || 'Hello! I\'m an eSIM consultant. How can I help?';
         
         if (messagesContainer && messagesContainer.children.length === 0 && chatHistory.length === 0) {
             setTimeout(() => {
-                addMessage(welcomeMessage, 'assistant');
+                addMessage(welcomeMessage, 'assistant', true);
             }, 500);
         } else if (messagesContainer && messagesContainer.children.length === 0 && chatHistory.length > 0) {
-            // Restore history from chatHistory
+            // Restore history from chatHistory (without typewriter for restored messages)
             chatHistory.forEach(msg => {
                 if (msg.role && msg.content) {
-                    addMessage(msg.content, msg.role);
+                    addMessage(msg.content, msg.role, false);
                 }
             });
         }

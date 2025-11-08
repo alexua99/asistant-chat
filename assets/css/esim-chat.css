@@ -57,6 +57,14 @@
     max-height: 500px;
 }
 
+.esim-chat-messages ul, .esim-chat-messages ol {
+    padding-left: 20px;
+}
+
+.esim-chat-messages li {
+    margin-bottom: 5px;
+}
+
 .esim-chat-message {
     margin-bottom: 15px;
     display: flex;
@@ -87,7 +95,153 @@
     padding: 12px 16px;
     border-radius: 18px;
     word-wrap: break-word;
-    line-height: 1.4;
+    line-height: 1.2;
+    white-space: pre-wrap;
+}
+
+.esim-chat-message-bubble p {
+    margin: 0 0 5px;
+    line-height: 1.2;
+    color: inherit;
+}
+
+.esim-chat-message-bubble p:last-child {
+    margin-bottom: 0;
+}
+
+.esim-chat-message-bubble p:first-child {
+    margin-top: 0;
+}
+
+.esim-chat-message-bubble ul,
+.esim-chat-message-bubble ol {
+    margin: 0 6px;
+    padding-left: 24px;
+    line-height: 1.2;
+}
+
+.esim-chat-message-bubble ul {
+    list-style-type: disc;
+}
+
+.esim-chat-message-bubble ol {
+    list-style-type: decimal;
+}
+
+.esim-chat-message-bubble li {
+    margin:  0 5px;
+    line-height: 1.2;
+    padding-left: 4px;
+}
+
+.esim-chat-message-bubble li::marker {
+    color: inherit;
+    opacity: 0.7;
+}
+
+.esim-chat-message-bubble strong {
+    font-weight: 600;
+    color: inherit;
+}
+
+.esim-chat-message-bubble em {
+    font-style: italic;
+    color: inherit;
+}
+
+.esim-chat-message-bubble h3,
+.esim-chat-message-bubble h4 {
+    margin: 0 0 5px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: inherit;
+}
+
+.esim-chat-message-bubble h3 {
+    font-size: 1.1em;
+}
+
+.esim-chat-message-bubble h4 {
+    font-size: 1em;
+}
+
+.esim-chat-message-bubble code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
+    font-size: 0.9em;
+    color: inherit;
+}
+
+.esim-chat-message-bubble pre {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 12px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin:  0 0 5px;
+    border-left: 3px solid rgba(0, 0, 0, 0.1);
+}
+
+.esim-chat-message-bubble pre code {
+    background: transparent;
+    padding: 0;
+    font-size: 0.9em;
+}
+
+.esim-chat-message-bubble blockquote {
+    margin:  0 0 5px;
+    padding: 10px 14px;
+    border-left: 3px solid rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 4px;
+    font-style: italic;
+    color: inherit;
+}
+
+.esim-chat-message-bubble hr {
+    margin: 0 0 5px;
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    height: 0;
+}
+
+.esim-chat-message-bubble table {
+    width: 100%;
+    border-collapse: collapse;
+    margin:  0 0 5px;
+    font-size: 0.95em;
+}
+
+.esim-chat-message-bubble table th,
+.esim-chat-message-bubble table td {
+    padding: 8px 12px;
+    text-align: left;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.esim-chat-message-bubble table th {
+    background: rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+}
+
+.esim-chat-message-bubble table tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.esim-chat-message-bubble a {
+    color: inherit;
+    text-decoration: underline;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.esim-chat-message-bubble a:hover {
+    opacity: 1;
+}
+
+.esim-chat-message.user .esim-chat-message-bubble a {
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .esim-chat-message.user .esim-chat-message-bubble {
